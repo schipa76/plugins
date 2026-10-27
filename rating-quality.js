@@ -4,6 +4,9 @@
     if (window.__lampa_rq_plugin) return;
     window.__lampa_rq_plugin = true;
 
+    // Отладка: вместо пустого качества показывает код причины (поставьте false, когда всё заработает)
+    var DEBUG = true;
+
     var qCache = {};
 
     function addStyle() {
@@ -84,22 +87,26 @@
     }
 
     function estimateQuality(d, cb) {
-        if (!d.id || d.name || d.first_air_date) return cb(null);
+        if (!d.id) return cb(DEBUG ? 'NOID' : null);
+        if (d.name || d.first_air_date) return cb(DEBUG ? 'TV' : null);
 
         var key = 'm' + d.id;
         if (key in qCache) return cb(qCache[key]);
 
         try {
             var net = new Lampa.Reguest();
+            var tmdbKey = (Lampa.TMDB && typeof Lampa.TMDB.key === 'function') ? Lampa.TMDB.key() : '';
+            var url = Lampa.TMDB.api('movie/' + d.id + '/release_dates?api_key=' + tmdbKey);
 
-            net.silent(Lampa.TMDB.api('movie/' + d.id + '/release_dates'), function (json) {
-                qCache[key] = calcQuality(json);
+            net.silent(url, function (json) {
+                var q = calcQuality(json);
+                qCache[key] = q || (DEBUG ? 'N/A' : null);
                 cb(qCache[key]);
             }, function () {
-                cb(null);
+                cb(DEBUG ? 'ERR' : null);
             });
         } catch (e) {
-            cb(null);
+            cb(DEBUG ? 'EXC' : null);
         }
     }
 
