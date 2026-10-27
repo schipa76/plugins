@@ -5,7 +5,7 @@
     window.__lampa_rq_plugin = true;
 
     // Отладка: вместо пустого качества показывает код причины (поставьте false, когда всё заработает)
-    var DEBUG = true;
+    var DEBUG = false;
 
     var qCache = {};
 
@@ -15,7 +15,7 @@
         var s = document.createElement('style');
         s.id = 'rq-style';
         s.textContent =
-            '.rq-badge{position:absolute;left:0.4em;bottom:0.4em;z-index:5;display:flex;gap:0.4em;' +
+            '.rq-badge{position:absolute;right:0.4em;bottom:0.4em;z-index:5;display:flex;gap:0.4em;' +
             'align-items:center;padding:0.2em 0.5em;border-radius:0.3em;background:rgba(0,0,0,.75);' +
             'color:#fff;font-size:1.13em;font-weight:bold;white-space:nowrap}' +
             '.rq-badge .rq-q{color:#3b82f6}';
@@ -63,10 +63,15 @@
         return n ? normQuality(n.textContent) : null;
     }
 
-    // Оценка по датам релиза в TMDB (через прокси самой Lampa), только для фильмов
+    // Оценка по датам релиза в TMDB (через прокси самой Lampa), только для фильмов:
+    // дисковый релиз после 2016 года -> 4K, цифровой -> WEB, старый дисковый или ТВ -> HD, только кино -> TS
+    var UHD_START = Date.UTC(2016, 0, 1);
+
     function calcQuality(json) {
         var now = Date.now();
-        var home = false;
+        var uhd = false;
+        var web = false;
+        var hd = false;
         var theatre = null;
 
         (json && json.results || []).forEach(function (country) {
@@ -74,14 +79,20 @@
                 var t = new Date(rd.release_date).getTime();
                 if (!t || t > now) return;
 
-                if (rd.type === 4 || rd.type === 5 || rd.type === 6) home = true;
+                if (rd.type === 5) {
+                    if (t >= UHD_START) uhd = true;
+                    else hd = true;
+                } else if (rd.type === 4) web = true;
+                else if (rd.type === 6) hd = true;
                 else if (rd.type === 2 || rd.type === 3) {
                     if (theatre === null || t < theatre) theatre = t;
                 }
             });
         });
 
-        if (home) return 'HD';
+        if (uhd) return '4K';
+        if (web) return 'WEB';
+        if (hd) return 'HD';
         if (theatre !== null) return (now - theatre > 180 * 86400000) ? 'HD' : 'TS';
         return null;
     }
@@ -130,7 +141,7 @@
         badge.appendChild(qWrap);
 
         var rest = [];
-        if (r > 0) rest.push('<span style="color:' + ratingColor(r) + '">★ ' + r.toFixed(1) + '</span>');
+        if (r > 0) rest.push('<span>★ <span style="color:' + ratingColor(r) + '">' + r.toFixed(1) + '</span></span>');
         if (y) rest.push('<span>' + y + '</span>');
 
         var restWrap = document.createElement('span');
@@ -152,7 +163,20 @@
 
         var real = realQuality(el, d);
         if (real) setQuality(real);
-        else estimateQuality(d, setQuality);
+        else {
+            var answered = false;
+
+            if (DEBUG) setQuality('…');
+
+            setTimeout(function () {
+                if (!answered && DEBUG) setQuality('TMO');
+            }, 6000);
+
+            estimateQuality(d, function (q) {
+                answered = true;
+                setQuality(q);
+            });
+        }
     }
 
     function scan() {
