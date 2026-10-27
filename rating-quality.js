@@ -4,7 +4,7 @@
     if (window.__lampa_rq_plugin) return;
     window.__lampa_rq_plugin = true;
 
-    // Отладка: вместо пустого качества показывает код причины (поставьте false, когда всё заработает)
+    // Отладка: вместо пустого качества показывает код причины
     var DEBUG = false;
 
     var qCache = {};
@@ -15,20 +15,34 @@
         var s = document.createElement('style');
         s.id = 'rq-style';
         s.textContent =
-            '.rq-badge{position:absolute;right:0.4em;bottom:0.4em;z-index:5;display:flex;gap:0.4em;' +
-            'align-items:center;padding:0.2em 0.5em;border-radius:0.3em;background:rgba(0,0,0,.75);' +
-            'color:#fff;font-size:1.13em;font-weight:bold;white-space:nowrap}' +
-            '.rq-badge .rq-q{color:#3b82f6}';
+            '.rq-rate,.rq-qual,.rq-year{padding:0.15em 0.6em;border-radius:2em;font-size:1.13em;' +
+            'font-weight:bold;line-height:1.4;white-space:nowrap;box-shadow:0 0.1em 0.3em rgba(0,0,0,.4)}' +
+            '.rq-rate{position:absolute;right:0.5em;bottom:0.5em;z-index:5}' +
+            '.rq-left{position:absolute;left:0.5em;bottom:0.5em;z-index:5;display:flex;' +
+            'flex-direction:column;align-items:flex-start;gap:0.3em}' +
+            '.rq-qual{background:rgba(0,0,0,.75);color:#3b82f6}' +
+            '.rq-year{background:rgba(0,0,0,.75);color:#fff}';
         document.head.appendChild(s);
     }
 
-    // Цвет рейтинга: чем выше, тем зеленее
-    function ratingColor(r) {
-        if (r >= 8) return '#22c55e';
-        if (r >= 7) return '#84cc16';
-        if (r >= 6) return '#eab308';
-        if (r >= 5) return '#f97316';
-        return '#ef4444';
+    // Цвет плашки рейтинга: 7+ зелёная, 5-7 жёлтая, ниже 5 красная
+    function ratingStyle(r) {
+        if (r >= 7) return { bg: '#4caf50', fg: '#fff' };
+        if (r >= 5) return { bg: '#fdc92f', fg: '#1a1a1a' };
+        return { bg: '#e53935', fg: '#fff' };
+    }
+
+    // Цвета плашки качества: фон и цвет текста
+    var QUALITY_COLORS = {
+        '4K': { bg: '#4caf50', fg: '#fff' },
+        'FHD': { bg: '#2196f3', fg: '#fff' },
+        'HD': { bg: '#fdc92f', fg: '#1a1a1a' },
+        'WEB': { bg: '#fb8c00', fg: '#fff' },
+        'TS': { bg: '#e53935', fg: '#fff' }
+    };
+
+    function qualityColor(q) {
+        return QUALITY_COLORS[q] || { bg: '#607d8b', fg: '#fff' };
     }
 
     function getData(el) {
@@ -128,38 +142,48 @@
         if (!d) return;
         el.__rq = true;
 
+        var view = el.querySelector('.card__view') || el;
+        if (getComputedStyle(view).position === 'static') view.style.position = 'relative';
+
+        // Рейтинг: цветная плашка справа внизу
         var r = parseFloat(d.vote_average);
+        if (r > 0) {
+            var c = ratingStyle(r);
+            var rate = document.createElement('div');
+            rate.className = 'rq-rate';
+            rate.style.background = c.bg;
+            rate.style.color = c.fg;
+            rate.textContent = '★ ' + r.toFixed(1);
+            view.appendChild(rate);
+        }
+
+        // Слева внизу: плашка качества (над ней) и плашка года
+        var left = document.createElement('div');
+        left.className = 'rq-left';
+
+        var qual = document.createElement('div');
+        qual.className = 'rq-qual';
+        qual.style.display = 'none';
+        left.appendChild(qual);
+
         var y = getYear(d);
+        if (y) {
+            var year = document.createElement('div');
+            year.className = 'rq-year';
+            year.textContent = y;
+            left.appendChild(year);
+        }
 
-        var badge = document.createElement('div');
-        badge.className = 'rq-badge';
-        badge.style.display = 'none';
-
-        var qWrap = document.createElement('span');
-        qWrap.style.display = 'none';
-        qWrap.innerHTML = '<span class="rq-q"></span> <span>•</span>';
-        badge.appendChild(qWrap);
-
-        var rest = [];
-        if (r > 0) rest.push('<span>★ <span style="color:' + ratingColor(r) + '">' + r.toFixed(1) + '</span></span>');
-        if (y) rest.push('<span>' + y + '</span>');
-
-        var restWrap = document.createElement('span');
-        restWrap.innerHTML = rest.join(' <span>•</span> ');
-        badge.appendChild(restWrap);
-
-        if (rest.length) badge.style.display = 'flex';
+        view.appendChild(left);
 
         function setQuality(q) {
             if (!q) return;
-            qWrap.querySelector('.rq-q').textContent = q;
-            qWrap.style.display = '';
-            badge.style.display = 'flex';
+            qual.textContent = q;
+            var qc = qualityColor(q);
+            qual.style.background = qc.bg;
+            qual.style.color = qc.fg;
+            qual.style.display = '';
         }
-
-        var view = el.querySelector('.card__view') || el;
-        if (getComputedStyle(view).position === 'static') view.style.position = 'relative';
-        view.appendChild(badge);
 
         var real = realQuality(el, d);
         if (real) setQuality(real);
