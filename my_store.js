@@ -47,7 +47,6 @@
         },
         {
             id: "online", title: "Онлайн", color: "#6366f1", items: [
-                { name: "Спортивные и киберспортивные трансляции", author: "@lampame", descr: "Прямые трансляции спортивных и киберспортивных событий с maincast.tv.", link: "https://lampame.github.io/main/sp.js", notes: ["Только Lampa 3.0 и новее"] },
                 { name: "Трейлеры с Rutube", author: "@tvigl", descr: "Если не воспроизводятся трейлеры с YouTube — они будут грузиться с Rutube.", link: "https://tvigl.github.io/plugins/rutube.js" },
                 { name: "Управление онлайн-источниками", author: "@tvigl", descr: "Сортировка источников по качеству или алфавиту, скрытие неактивных.", link: "https://tvigl.github.io/plugins/source_sort.js" },
                 { name: "Top Bar — смена плеера в шапке", author: "@tvigl", descr: "Кнопка в шапке для быстрого переключения встроенного и внешнего плеера.", link: "https://tvigl.github.io/plugins/top_bar.js" },
@@ -55,11 +54,8 @@
                 { name: "Пропуск заставки и титров", author: "hub.alcopa.cc", descr: "Позволяет пропускать заставки и титры в новом плеере Lampa.", link: "https://hub.alcopa.cc/dl/skip_segments/v1.0.2/plugin.js" },
                 { name: "OpenSubtitles — субтитры в плеере", author: "hub.alcopa.cc", descr: "Добавляет субтитры OpenSubtitles в меню субтитров плеера.", link: "https://hub.alcopa.cc/dl/opensubs_menu/v1.2.9/plugin.js" },
                 { name: "Anti DMCA — обход блокировок DMCA", author: "@levende", descr: "Убирает или заменяет заблокированные по DMCA источники в выдаче.", link: "https://levende.github.io/lampa-plugins/anti-dmca.js" },
-                { name: "Bandera 2.0 — онлайн-источники", author: "@lampame", descr: "Просмотр фильмов и сериалов из онлайн-источников.", link: "https://lampame.github.io/main/bo.js" },
-                { name: "IMDb Trailers — трендовые трейлеры", author: "@lampame", descr: "Лента трендовых трейлеров IMDb на главной, полноэкранный режим, выбор качества.", link: "https://lampame.github.io/main/timdb.js" },
                 { name: "Lampac Source Filter", author: "@levende", descr: "Скрывает ненужных провайдеров в списке источников.", link: "https://levende.github.io/lampa-plugins/lampac-src-filter.js", notes: ["Для серверов Lampac"] },
                 { name: "Balancer Sanitizer", author: "@levende", descr: "Очищает адреса балансеров от лишних параметров.", link: "https://levende.github.io/lampa-plugins/balancer-sanitizer.js" },
-                { name: "TryzubTV — украинское ТВ", author: "@lampame", descr: "Каналы украинского телевидения через TryzubTV: категории, каталоги, кэширование.", link: "https://lampame.github.io/main/ttv.js" }
             ]
         },
         {
@@ -95,9 +91,7 @@
                 { name: "AVGRating — рейтинги с 11 сайтов", author: "@cevamnelampaplagin", descr: "Рейтинги с 11 сайтов, награды и средняя оценка.", link: "https://cevamnelampaplagin.github.io/tytnemanichogodobrogo/avgrating.js" },
                 { name: "Cardify+ — живой фон в карточке", author: "@ko31k", descr: "Динамический фон карточки: трейлер без звука или слайд-шоу из постеров.", link: "https://ko31k.github.io/LMP/plugins/cardify+.js" },
                 { name: "Interface+ — комплексное улучшение интерфейса", author: "@ko31k", descr: "Темы, инфо-панель, цветные рейтинги и метки, обновлённый блок торрентов.", link: "https://ko31k.github.io/LMP/plugins/interface+.js" },
-                { name: "Movie Enhancer — улучшенная карточка фильма", author: "@lampame", descr: "Редактор кнопок, дополнительные рейтинги, переключатель источников в шапке.", link: "https://lampame.github.io/main/lme.js" },
                 { name: "Networks — кнопки стримингов и студий", author: "@ko31k", descr: "Кнопки стримингов и студий-производителей в карточке (мод плагина @levende).", link: "https://ko31k.github.io/LMP/plugins/Networks.js" },
-                { name: "Nightingale — флажок украинской озвучки", author: "@lampame", descr: "Метка с флагом Украины, если в источниках есть украинский перевод.", link: "https://lampame.github.io/main/n.js" },
                 { name: "TV Status Color — цветной статус сериала", author: "@levende", descr: "Окрашивает статус сериала: завершён, выходит или ожидается.", link: "https://levende.github.io/lampa-plugins/tv-status-color.js" },
                 { name: "Yarik's Design — редизайн карточек", author: "@yarikrazor-star", descr: "Горизонтальные карточки, настраиваемые метки, несколько рейтингов.", link: "https://yarikrazor-star.github.io/lmp/ydes.js", notes: ["Для доп. рейтингов нужен ключ MDBList"] },
                 { name: "Buttons+ — редактор кнопок в карточке", author: "@ko31k", descr: "Порядок, скрытие, иконки или текст, свои папки, более 60 иконок.", link: "https://ko31k.github.io/LMP/plugins/buttons+.js" },
@@ -123,8 +117,6 @@
                 { name: "Студии (оригинал, UA)", author: "@syvyj", descr: "Подборки крупных студий в боковом меню: Netflix, Disney, Apple и др.", link: "https://syvyj.github.io/studios_4lampa/studios.js" },
                 { name: "Студии (UA / RU / EN / PL)", author: "@tvigl", descr: "Те же подборки студий, с поддержкой нескольких языков.", link: "https://tvigl.github.io/plugins/studios.js" },
                 { name: "Источники", author: "@tvigl", descr: "Новый пункт меню: Чарты, Стриминги, TV США, TV Мир, Украина, Россия.", link: "https://tvigl.github.io/plugins/sources.js" },
-                { name: "CommunityWatches — топ недели и скрытые жемчужины", author: "@lampame", descr: "Ленты Community Watches на главной, в фильмах и сериалах.", link: "https://lampame.github.io/main/cw.js" },
-                { name: "New Category — новые категории в каталоге", author: "@lampame", descr: "Кино, TV Top / New, концерты, документальные, подборки по стримингам и странам.", link: "https://lampame.github.io/main/newcategory.js" },
                 { name: "Random Scheduled — случайный фильм из «Позже»", author: "@levende", descr: "Выбирает случайный фильм или сериал из запланированного.", link: "https://levende.github.io/lampa-plugins/random-scheduled.js" },
                 { name: "Siaivo Dorama — раздел дорам", author: "cdn.jsdelivr.net", descr: "Отдельная категория дорам в боковом меню.", link: "https://cdn.jsdelivr.net/gh/Lamp1ch-chmuk/dorami-Siaivo@main/d.js" }
             ]
@@ -136,11 +128,6 @@
                 { name: "EasyTorrent — умный подбор раздач", author: "@darkestclouds", descr: "Изучает ваши предпочтения и рекомендует подходящие раздачи.", link: "https://darkestclouds.github.io/plugins/easytorrent/easytorrent.min.js", notes: ["Экспериментальный"] },
                 { name: "Каталог парсеров", author: "@ko31k", descr: "Список парсеров для торрентов. После установки: Настройки → Парсер.", link: "https://ko31k.github.io/LMP/plugins/Parsers.js" },
                 { name: "Кнопка «Торренты» рядом с Play", author: "hub.alcopa.cc", descr: "Кнопка «Торренты» рядом с Play в карточке фильма.", link: "https://hub.alcopa.cc/dl/torrent_button/v1.0.0/plugin.js" },
-                { name: "Concert Torr Search — поиск концертов", author: "@lampame", descr: "Поиск концертов и музыкальных релизов в торрент-источниках.", link: "https://lampame.github.io/main/cts.js" },
-                { name: "Torrent Downloader — торрент-клиент в Lampa", author: "@lampame", descr: "Подключает qBittorrent, Transmission, Synology, Keenetic; панель загрузок.", link: "https://lampame.github.io/main/torrentmanager.js", notes: ["Нужен свой торрент-клиент"] },
-                { name: "Tracks Probe — информация о дорожках", author: "@lampame", descr: "Показывает кодеки, языки, каналы, битрейт и субтитры в списке файлов.", link: "https://lampame.github.io/main/tracks.js" },
-                { name: "TsTracks — дорожки и субтитры из TorrServer", author: "@lampame", descr: "Подробная информация о дорожках и субтитрах от TorrServer.", link: "https://lampame.github.io/main/tstracks.js" },
-                { name: "Infuse Save — отправка торрентов в Infuse", author: "@lampame", descr: "Действия Save to Infuse и Save all to Infuse в списке файлов.", link: "https://lampame.github.io/main/infuseSave.js", notes: ["Для приложения Infuse (Apple)"] }
             ]
         },
         {
@@ -170,8 +157,6 @@
                 { name: "LParty — совместный просмотр с друзьями", author: "@nrsua", descr: "Синхронный просмотр с друзьями на разных устройствах.", link: "https://nrsua.github.io/lampa-nrs/lparty.js" },
                 { name: "VoBoost — громкость выше 100%", author: "@nrsua", descr: "Поднимает громкость выше 100% для тихих видео.", link: "https://nrsua.github.io/lampa-nrs/voboost.js", notes: ["Только во встроенном плеере"] },
                 { name: "pipfs — видео в окне", author: "@cevamnelampaplagin", descr: "Картинка в картинке во встроенном плеере, поддерживает субтитры.", link: "https://cevamnelampaplagin.github.io/sharewithothers/pipfs.js" },
-                { name: "TraktTV — интеграция с Trakt", author: "@lampame", descr: "Вход через OAuth, синхронизация просмотров, списки, Up Next.", link: "https://lampame.github.io/main/trakttv.js", notes: ["Нужен аккаунт Trakt"] },
-                { name: "NightingaleNotifications — уведомления о новых сериях", author: "@lampame", descr: "Подписка на сериал колокольчиком в карточке, экран подписок.", link: "https://lampame.github.io/main/nn.js" },
                 { name: "Ytranslate — перевод на украинский", author: "@yarikrazor-star", descr: "Переводит на украинский названия, описания и слоганы.", link: "https://yarikrazor-star.github.io/lmp/ytranslate.js" },
                 { name: "Radio — более 50 радиостанций", author: "@ne3nayskas", descr: "Раздел «Радио» с украинскими и мировыми станциями.", link: "https://ne3nayskas.github.io/plugins/radio.js" }
             ]
@@ -183,6 +168,15 @@
         return String(str == null ? '' : str)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // '#6366f1' -> '99,102,241' (для rgba(var(--c), …) в стилях)
+    function rgbOf(hex) {
+        var h = String(hex || '').replace('#', '');
+        if (h.length === 3) h = h.replace(/(.)/g, '$1$1');
+        var n = parseInt(h, 16);
+        if (h.length !== 6 || isNaN(n)) return '148,163,184';
+        return ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255);
     }
 
     function sameUrl(a, b) {
@@ -294,9 +288,20 @@
             '.mys-card__state.off{display:inline-block;background:#4b5563;color:#e5e7eb}' +
             '.mys-card__body{padding:.8em .8em .9em}' +
             '.mys-card__name{font-size:1.05em;line-height:1.25;font-weight:700;color:#fff;max-height:2.5em;overflow:hidden}' +
-            '.mys-card__descr{margin-top:.45em;font-size:.82em;line-height:1.4;color:rgba(255,255,255,.6);max-height:4.2em;overflow:hidden}' +
-            '.mys-card__foot{margin-top:.6em;font-size:.75em;color:rgba(255,255,255,.4)}' +
+            '.mys-card__descr{margin-top:.45em;font-size:.82em;line-height:1.4;color:rgba(255,255,255,.72);max-height:4.2em;overflow:hidden}' +
+            '.mys-card__foot{margin-top:.6em;font-size:.75em;color:rgba(255,255,255,.55)}' +
             '.mys-card__note{margin-left:.4em;color:#fbbf24}' +
+            '@supports (--c:0){' +
+                '.mys-card__in{background:linear-gradient(150deg,rgba(var(--c),.42) 0%,rgba(var(--c),.15) 55%,rgba(18,20,26,.5) 100%);' +
+                    'border-color:rgba(var(--c),.55);box-shadow:0 .3em 1.2em rgba(var(--c),.22)}' +
+                '.mys-card.focus .mys-card__in{border-color:#fff;box-shadow:0 .5em 2em rgba(var(--c),.7)}' +
+                '.mys-card__author{display:inline-block;padding:.1em .6em;border-radius:1em;background:rgba(var(--c),.32);color:#fff}' +
+                '.mys-section i{box-shadow:0 0 .9em rgba(var(--c),.95)}' +
+                '.mys-tab.tinted{background:rgba(var(--c),.2);border-color:rgba(var(--c),.45);color:#fff}' +
+                '.mys-tab.tinted.focus{border-color:#fff;background:rgba(var(--c),.5);color:#fff}' +
+                '.mys-tab.tinted.active{background:rgba(var(--c),.88);border-color:rgba(var(--c),1);color:#fff}' +
+                '.mys-tab.tinted.active.focus{border-color:#fff}' +
+            '}' +
             '.mys-info__text{font-size:1em;line-height:1.55;color:rgba(255,255,255,.85);white-space:pre-line}' +
             '.mys-info__note{display:inline-block;margin:.8em .5em 0 0;padding:.3em .7em;border-radius:.5em;background:rgba(251,191,36,.15);color:#fbbf24;font-size:.85em;font-weight:600}' +
             '.mys-info__meta{margin-top:1em;font-size:.85em;color:rgba(255,255,255,.5);word-break:break-all}' +
@@ -352,11 +357,11 @@
 
             var tabs = $('<div class="mys-tabs"></div>');
             var tabList = [{ id: 'all', title: 'Все', count: countAll(sections) }].concat(sections.map(function (s) {
-                return { id: s.id, title: s.title, count: s.items.length };
+                return { id: s.id, title: s.title, count: s.items.length, color: s.color };
             }));
 
             tabList.forEach(function (t) {
-                var tab = $('<div class="mys-tab selector' + (t.id === filter ? ' active' : '') + '">' + esc(t.title) + '<span>' + esc(t.count) + '</span></div>');
+                var tab = $('<div class="mys-tab selector' + (t.id === filter ? ' active' : '') + (t.color ? ' tinted" style="--c:' + rgbOf(t.color) : '') + '">' + esc(t.title) + '<span>' + esc(t.count) + '</span></div>');
                 tab.on('hover:enter', function () {
                     filter = t.id;
                     tabs.find('.mys-tab').removeClass('active');
@@ -385,7 +390,7 @@
                 if (filter !== 'all' && filter !== section.id) return;
                 if (!section.items.length) return;
 
-                list.append('<div class="mys-section"><i style="background:' + esc(section.color) + '"></i>' + esc(section.title) + '</div>');
+                list.append('<div class="mys-section" style="--c:' + rgbOf(section.color) + '"><i style="background:' + esc(section.color) + '"></i>' + esc(section.title) + '</div>');
 
                 var grid = $('<div class="mys-grid"></div>');
                 section.items.forEach(function (plug) { grid.append(self.card(plug, section)); });
@@ -397,13 +402,13 @@
             var note = plug.notes && plug.notes.length
                 ? '<span class="mys-card__note">⚠ ' + esc(plug.notes.length > 1 ? 'есть условия' : plug.notes[0]) + '</span>' : '';
 
-            var el = $('<div class="mys-card selector">' +
+            var el = $('<div class="mys-card selector" style="--c:' + rgbOf(section.color) + '">' +
                 '<div class="mys-card__in">' +
                     '<div class="mys-card__body">' +
                         '<div class="mys-card__state"></div>' +
                         '<div class="mys-card__name">' + esc(plug.name) + '</div>' +
                         '<div class="mys-card__descr">' + esc(plug.descr) + '</div>' +
-                        '<div class="mys-card__foot">' + esc(plug.author || '') + note + '</div>' +
+                        '<div class="mys-card__foot"><span class="mys-card__author">' + esc(plug.author || '') + '</span>' + note + '</div>' +
                     '</div>' +
                 '</div></div>');
 
