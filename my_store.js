@@ -15,6 +15,34 @@
     if (window.my_store_plugin) return;
     window.my_store_plugin = true;
 
+    // Защита от ошибки «element.toggleClass is not a function»: если какой-то плагин передал в контроллер Lampa
+    // обычный DOM-элемент вместо jQuery-объекта, ему добавляются недостающие методы работы с классами.
+    // Это страховка: сам конфликтующий плагин она не чинит.
+    (function () {
+        try {
+            var P = window.Element && window.Element.prototype;
+            if (!P || !P.classList) return;
+            var define = function (name, fn) {
+                if (P[name]) return;
+                try { Object.defineProperty(P, name, { value: fn, configurable: true, writable: true }); } catch (e) {}
+            };
+            var each = function (el, names, fn) {
+                String(names || '').split(/\s+/).forEach(function (n) { if (n) fn(el.classList, n); });
+                return el;
+            };
+            define('addClass', function (c) { return each(this, c, function (l, n) { l.add(n); }); });
+            define('removeClass', function (c) { return each(this, c, function (l, n) { l.remove(n); }); });
+            define('hasClass', function (c) { return this.classList.contains(c); });
+            define('toggleClass', function (c, force) {
+                return each(this, c, function (l, n) {
+                    if (force === undefined) l.toggle(n);
+                    else if (force) l.add(n);
+                    else l.remove(n);
+                });
+            });
+        } catch (e) {}
+    })();
+
     var NAME = 'Мои плагины';
     var COMPONENT = 'my_store';
 
@@ -40,9 +68,9 @@
     /* ---------- каталог ---------- */
     var CATALOG = [
         {
-            id: 'mine', title: 'Мои', color: '#38bdf8', items: [
-                { name: 'Мои рейтинги — плашки в карточке', author: 'Свой', descr: 'Тёмные плашки рейтингов TMDB, IMDb, Кинопоиск с логотипами; число окрашено по оценке; рамка у «16+» и «Выпущено».', file: 'my_ratings.js', notes: ['Файл должен лежать рядом с my_store.js'] },
-                { name: 'Showy — убрать рекламу Pro', author: 'Свой', descr: 'Скрывает промо-баннер Showy Pro и рекламные окна этого плагина.', file: 'showy_noads.js', notes: ['Файл должен лежать рядом с my_store.js'] }
+            id: 'mine', title: 'Мои плагины', color: '#fbbf24', items: [
+                { name: 'Мои рейтинги — плашки в карточке', author: 'Свой', descr: 'Тёмные плашки рейтингов TMDB, IMDb, Кинопоиск с логотипами; число окрашено по оценке; рамка у «16+» и «Выпущено».', file: 'my_ratings.js' },
+                { name: 'Showy — убрать рекламу Pro', author: 'Свой', descr: 'Скрывает промо-баннер Showy Pro и рекламные окна этого плагина.', file: 'showy_noads.js' }
             ]
         },
         {
@@ -292,15 +320,28 @@
             '.mys-card__foot{margin-top:.6em;font-size:.75em;color:rgba(255,255,255,.55)}' +
             '.mys-card__note{margin-left:.4em;color:#fbbf24}' +
             '@supports (--c:0){' +
-                '.mys-card__in{background:linear-gradient(150deg,rgba(var(--c),.42) 0%,rgba(var(--c),.15) 55%,rgba(18,20,26,.5) 100%);' +
-                    'border-color:rgba(var(--c),.55);box-shadow:0 .3em 1.2em rgba(var(--c),.22)}' +
+                '.mys-card__in{background:linear-gradient(150deg,rgba(var(--c),.66) 0%,rgba(var(--c),.36) 55%,rgba(18,20,26,.9) 100%);' +
+                    'border-color:rgba(var(--c),.8);box-shadow:0 .3em 1.2em rgba(var(--c),.3)}' +
                 '.mys-card.focus .mys-card__in{border-color:#fff;box-shadow:0 .5em 2em rgba(var(--c),.7)}' +
-                '.mys-card__author{display:inline-block;padding:.1em .6em;border-radius:1em;background:rgba(var(--c),.32);color:#fff}' +
+                '.mys-card__author{display:inline-block;padding:.1em .6em;border-radius:1em;background:rgba(var(--c),.45);color:#fff}' +
                 '.mys-section i{box-shadow:0 0 .9em rgba(var(--c),.95)}' +
-                '.mys-tab.tinted{background:rgba(var(--c),.2);border-color:rgba(var(--c),.45);color:#fff}' +
-                '.mys-tab.tinted.focus{border-color:#fff;background:rgba(var(--c),.5);color:#fff}' +
-                '.mys-tab.tinted.active{background:rgba(var(--c),.88);border-color:rgba(var(--c),1);color:#fff}' +
+                '.mys-tab.tinted{background:rgba(var(--c),.38);border-color:rgba(var(--c),.7);color:#fff}' +
+                '.mys-tab.tinted.focus{border-color:#fff;background:rgba(var(--c),.7);color:#fff}' +
+                '.mys-tab.tinted.active{background:rgba(var(--c),.96);border-color:rgba(var(--c),1);color:#fff}' +
                 '.mys-tab.tinted.active.focus{border-color:#fff}' +
+                '.mys-tab.mine{background:linear-gradient(120deg,rgba(251,191,36,.6),rgba(249,115,22,.6));border-color:#fbbf24;font-weight:800;color:#fff}' +
+                '.mys-tab.mine:before{content:"\\2605  ";color:#fde68a}' +
+                '.mys-tab.mine.focus{border-color:#fff;background:linear-gradient(120deg,rgba(251,191,36,.85),rgba(249,115,22,.85))}' +
+                '.mys-tab.mine.active{background:linear-gradient(120deg,#fbbf24,#f97316);border-color:#fde68a;color:#2a1600;box-shadow:0 0 1.2em rgba(251,191,36,.55)}' +
+                '.mys-tab.mine.active:before{color:#7c2d12}' +
+                '.mys-section.mine{padding:.45em 1em;border-radius:.9em;border:.1em solid rgba(251,191,36,.75);' +
+                    'background:linear-gradient(120deg,rgba(251,191,36,.38) 0%,rgba(249,115,22,.2) 60%,rgba(249,115,22,0) 100%);' +
+                    'box-shadow:0 0 1.4em rgba(251,191,36,.25)}' +
+                '.mys-section.mine:before{content:"\\2605";margin-right:.5em;color:#fde68a}' +
+                '.mys-card.mine .mys-card__in{background:linear-gradient(150deg,rgba(251,191,36,.8) 0%,rgba(249,115,22,.5) 50%,rgba(38,22,6,.92) 100%);border-color:#fbbf24;box-shadow:0 .3em 1.4em rgba(251,191,36,.4)}' +
+                '.mys-card.mine.focus .mys-card__in{border-color:#fff;box-shadow:0 .5em 2em rgba(251,191,36,.8)}' +
+                '.mys-card.mine .mys-card__name:before{content:"\\2605  ";color:#fde68a}' +
+                '.mys-card.mine .mys-card__author{background:rgba(251,191,36,.55);color:#2a1600}' +
             '}' +
             '.mys-info__text{font-size:1em;line-height:1.55;color:rgba(255,255,255,.85);white-space:pre-line}' +
             '.mys-info__note{display:inline-block;margin:.8em .5em 0 0;padding:.3em .7em;border-radius:.5em;background:rgba(251,191,36,.15);color:#fbbf24;font-size:.85em;font-weight:600}' +
@@ -361,7 +402,7 @@
             }));
 
             tabList.forEach(function (t) {
-                var tab = $('<div class="mys-tab selector' + (t.id === filter ? ' active' : '') + (t.color ? ' tinted" style="--c:' + rgbOf(t.color) : '') + '">' + esc(t.title) + '<span>' + esc(t.count) + '</span></div>');
+                var tab = $('<div class="mys-tab selector' + (t.id === filter ? ' active' : '') + (t.color ? (t.id === 'mine' ? ' mine' : '') + ' tinted" style="--c:' + rgbOf(t.color) : '') + '">' + esc(t.title) + '<span>' + esc(t.count) + '</span></div>');
                 tab.on('hover:enter', function () {
                     filter = t.id;
                     tabs.find('.mys-tab').removeClass('active');
@@ -390,7 +431,7 @@
                 if (filter !== 'all' && filter !== section.id) return;
                 if (!section.items.length) return;
 
-                list.append('<div class="mys-section" style="--c:' + rgbOf(section.color) + '"><i style="background:' + esc(section.color) + '"></i>' + esc(section.title) + '</div>');
+                list.append('<div class="mys-section' + (section.id === 'mine' ? ' mine' : '') + '" style="--c:' + rgbOf(section.color) + '"><i style="background:' + esc(section.color) + '"></i>' + esc(section.title) + '</div>');
 
                 var grid = $('<div class="mys-grid"></div>');
                 section.items.forEach(function (plug) { grid.append(self.card(plug, section)); });
@@ -402,7 +443,7 @@
             var note = plug.notes && plug.notes.length
                 ? '<span class="mys-card__note">⚠ ' + esc(plug.notes.length > 1 ? 'есть условия' : plug.notes[0]) + '</span>' : '';
 
-            var el = $('<div class="mys-card selector" style="--c:' + rgbOf(section.color) + '">' +
+            var el = $('<div class="mys-card selector' + (section.id === 'mine' ? ' mine' : '') + '" style="--c:' + rgbOf(section.color) + '">' +
                 '<div class="mys-card__in">' +
                     '<div class="mys-card__body">' +
                         '<div class="mys-card__state"></div>' +
