@@ -145,6 +145,13 @@
             // --- редактор кнопок: скрытые кнопки ---
             '.fsc-btn-hide{display:none !important;}' +
 
+            // --- редактор кнопок: выбор иконки ---
+            '.fsc-icon-grid{display:flex;flex-wrap:wrap;justify-content:center;}' +
+            '.fsc-icon-item{width:4em;height:4em;margin:.3em;display:flex;align-items:center;justify-content:center;border-radius:.3em;cursor:pointer;}' +
+            '.fsc-icon-item.focus{background:rgba(255,255,255,.2);}' +
+            '.fsc-icon-item svg{width:1.8em;height:1.8em;}' +
+            '.fsc-icon-reset{width:100%;height:auto;padding:.8em;margin:.5em .3em;background:rgba(200,80,80,.5);font-size:1.2em;}' +
+
             // --- слой с трейлером (без затемнения) ---
             '.trailer-bg{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;opacity:0;transition:opacity 1s ease;}' +
             '.trailer-bg--ready{opacity:1;}' +
@@ -757,6 +764,115 @@
         return ids;
     }
 
+    // ---------- иконки кнопок ----------
+
+    function ico(inner) {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
+    }
+
+    var ICONS = [
+        { name: 'Плей', svg: ico('<polygon points="6 4 20 12 6 20 6 4"/>') },
+        { name: 'Онлайн', svg: ico('<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>') },
+        { name: 'Фильм', svg: ico('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4l2 5M14 4l2 5"/>') },
+        { name: 'Загрузка', svg: ico('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>') },
+        { name: 'Закладка', svg: ico('<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>') },
+        { name: 'Сердце', svg: ico('<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/>') },
+        { name: 'Звезда', svg: ico('<polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9 12 2"/>') },
+        { name: 'Поиск', svg: ico('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/>') },
+        { name: 'Часы', svg: ico('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>') },
+        { name: 'Поделиться', svg: ico('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>') },
+        { name: 'Инфо', svg: ico('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>') },
+        { name: 'Настройки', svg: ico('<path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>') },
+        { name: 'Ещё', svg: ico('<circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/>') },
+        { name: 'Глаз', svg: ico('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>') },
+        { name: 'Огонь', svg: ico('<path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"/>') },
+        { name: 'Молния', svg: ico('<polygon points="13 2 4 14 12 14 11 22 20 10 12 10 13 2"/>') },
+        { name: 'Корона', svg: ico('<path d="M3 18h18M4 18L3 7l5 4 4-6 4 6 5-4-1 11"/>') },
+        { name: 'Кубок', svg: ico('<path d="M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3M12 14v4M8 21h8"/>') },
+        { name: 'Музыка', svg: ico('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>') },
+        { name: 'Камера', svg: ico('<rect x="2" y="5" width="14" height="14" rx="2"/><path d="M22 7l-6 5 6 5V7z"/>') },
+        { name: 'Глобус', svg: ico('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>') },
+        { name: 'Колокол', svg: ico('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>') },
+        { name: 'Замок', svg: ico('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>') },
+        { name: 'Пользователь', svg: ico('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>') },
+        { name: 'Дом', svg: ico('<path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V10z"/><path d="M9 22V12h6v10"/>') },
+        { name: 'Папка', svg: ico('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>') },
+        { name: 'Список', svg: ico('<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>') },
+        { name: 'Галочка', svg: ico('<path d="M5 12l5 5L20 7"/>') },
+        { name: 'Плюс', svg: ico('<path d="M12 5v14M5 12h14"/>') }
+    ];
+
+    function findIcon(name) {
+        for (var i = 0; i < ICONS.length; i++) {
+            if (ICONS[i].name === name) return ICONS[i];
+        }
+        return null;
+    }
+
+    // ставим выбранную иконку или возвращаем родную
+    function applyIcon(b, name) {
+        var svg = b.find('svg').first();
+        if (!svg.length) return;
+
+        // запоминаем родную иконку, пока её не заменили
+        if (b.data('fscIcon0') === undefined && !svg.attr('data-fsc-icon')) {
+            b.data('fscIcon0', svg[0].outerHTML);
+        }
+
+        var icon = name ? findIcon(name) : null;
+
+        if (icon) {
+            if (svg.attr('data-fsc-icon') !== name) {
+                var n = $(icon.svg);
+                n.attr('data-fsc-icon', name);
+                svg.replaceWith(n);
+            }
+        } else if (svg.attr('data-fsc-icon') && b.data('fscIcon0')) {
+            svg.replaceWith($(b.data('fscIcon0')));
+        }
+    }
+
+    function iconPicker(body, id, ctrl) {
+        var grid = $('<div class="fsc-icon-grid"></div>');
+
+        var reset = $('<div class="fsc-icon-item fsc-icon-reset selector">По умолчанию</div>');
+        reset.on('hover:enter', function () {
+            var icons = $.extend({}, store('fsc_btn_icons', {}));
+            delete icons[id];
+            Lampa.Storage.set('fsc_btn_icons', icons);
+
+            Lampa.Modal.close();
+            setTimeout(function () { saveAndApply(body, ctrl); }, 100);
+        });
+        grid.append(reset);
+
+        ICONS.forEach(function (icon) {
+            var item = $('<div class="fsc-icon-item selector" title="' + icon.name + '"></div>').append(icon.svg);
+
+            item.on('hover:enter', function () {
+                var icons = $.extend({}, store('fsc_btn_icons', {}));
+                icons[id] = icon.name;
+                Lampa.Storage.set('fsc_btn_icons', icons);
+
+                Lampa.Modal.close();
+                setTimeout(function () { saveAndApply(body, ctrl); }, 100);
+            });
+
+            grid.append(item);
+        });
+
+        Lampa.Modal.open({
+            title: 'Выберите иконку',
+            html: grid,
+            size: 'medium',
+            scroll_to_center: true,
+            onBack: function () {
+                Lampa.Modal.close();
+                backTo(ctrl);
+            }
+        });
+    }
+
     // применяем сохранённый порядок, скрытие и названия
     function applyButtons(body) {
         try {
@@ -803,6 +919,7 @@
             ids.forEach(function (id) {
                 var b = items[id];
                 b.toggleClass('fsc-btn-hide', hide.indexOf(id) !== -1);
+                applyIcon(b, store('fsc_btn_icons', {})[id]);
 
                 if (titles[id]) {
                     var sp = b.find('span').first();
@@ -919,6 +1036,11 @@
             }
         ];
 
+        list.push({
+            title: 'Сменить иконку',
+            onSelect: function () { iconPicker(body, id, ctrl); }
+        });
+
         if (hide.length) {
             list.push({
                 title: 'Вернуть скрытые кнопки (' + hide.length + ')',
@@ -932,6 +1054,7 @@
                 Lampa.Storage.set('fsc_btn_order', []);
                 Lampa.Storage.set('fsc_btn_hide', []);
                 Lampa.Storage.set('fsc_btn_titles', {});
+                Lampa.Storage.set('fsc_btn_icons', {});
                 try { Lampa.Noty.show('Сброшено. Откройте карточку заново, чтобы вернуть прежний порядок и названия'); } catch (e) {}
                 saveAndApply(body, ctrl);
             }
