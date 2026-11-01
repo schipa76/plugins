@@ -42,7 +42,11 @@
         $('body')
             .toggleClass('fsc-nofposter', !!opt('fsc_hide_poster', true))
             .toggleClass('fsc-bottom', !!opt('fsc_bottom', true))
-            .toggleClass('fsc-layout', !!opt('fsc_layout', true));
+            .toggleClass('fsc-layout', !!opt('fsc_layout', true))
+            .toggleClass('fsc-labels', !!opt('fsc_labels', true))
+            .toggleClass('fsc-nosource', !!opt('fsc_hide_source', true))
+            .toggleClass('fsc-blue', !!opt('fsc_blue_progress', true))
+            .toggleClass('fsc-torrent', !!opt('fsc_torrent_layout', true));
     }
 
     // помечаем блок с годом и страной ("2026, Великобритания | США"),
@@ -107,6 +111,39 @@
                 'margin:0 !important;' +
                 'order:7 !important;' +
             '}' +
+
+            // --- из UI Style: оригинальное название над основным ---
+            '.full-start-new__title-original{font-size:1.6em;margin-bottom:0;}' +
+            'body.fsc-layout .full-start-new__right > .fsc-orig{order:0 !important;}' +
+
+            // --- из UI Style: подписи на всех кнопках, не только на выбранной ---
+            'body.fsc-labels .full-start-new__buttons .full-start__button:not(.focus) span{display:unset;}' +
+
+            // --- из UI Style: скрыть названия источников ---
+            'body.fsc-nosource .source--name{display:none;}' +
+
+            // --- из UI Style: синяя полоска прогресса просмотра ---
+            'body.fsc-blue .time-line > div{background-color:#3498DB;}' +
+            'body.fsc-blue .torrent-serial .time-line{width:stretch;top:unset;bottom:0;left:unset;}' +
+
+            // --- из UI Style: компактная строка с деталями у торрентов ---
+            'body.fsc-torrent .torrent-item__ffprobe > .m-general + div,' +
+            'body.fsc-torrent .torrent-item__ffprobe > div:not(.m-channels):not(.m-audio) + .m-channels,' +
+            'body.fsc-torrent .torrent-item__ffprobe > div:not(.m-channels):not(.m-audio) + .m-audio,' +
+            'body.fsc-torrent .torrent-item__ffprobe > div:not(.m-subtitle) + .m-subtitle{clear:both;}' +
+            '@media screen and (min-width:768px){' +
+                'body.fsc-torrent .torrent-item__details{flex-wrap:wrap;}' +
+                'body.fsc-torrent .torrent-item__tracker{order:1;}' +
+                'body.fsc-torrent .torrent-item__seeds{order:2;}' +
+                'body.fsc-torrent .torrent-item__grabs{order:3;margin-right:0;}' +
+                'body.fsc-torrent .torrent-item__details::after{content:"";order:4;flex-basis:100%;margin-top:.4em;}' +
+                'body.fsc-torrent .torrent-item__date{order:5;margin-right:auto;}' +
+                'body.fsc-torrent .torrent-item__bitrate{order:6;margin-right:0;}' +
+                'body.fsc-torrent .torrent-item__size{order:7;margin-left:1em;}' +
+            '}' +
+
+            // --- редактор кнопок: скрытые кнопки ---
+            '.fsc-btn-hide{display:none !important;}' +
 
             // --- слой с трейлером (без затемнения) ---
             '.trailer-bg{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;opacity:0;transition:opacity 1s ease;}' +
@@ -520,6 +557,72 @@
 
             Lampa.SettingsApi.addParam({
                 component: 'fullscreen_card',
+                param: { name: 'fsc_orig_title', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Оригинальное название',
+                    description: 'Показывать название на языке оригинала над основным'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_labels', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Подписи на всех кнопках',
+                    description: 'Текст у кнопок карточки виден всегда, а не только у выбранной'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_main_buttons', type: 'trigger', 'default': false },
+                field: {
+                    name: 'Только основные кнопки',
+                    description: 'Оставить Онлайн, Торренты и Закладки, остальные кнопки убрать'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_hide_source', type: 'trigger', 'default': true },
+                field: { name: 'Скрыть названия источников' }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_blue_progress', type: 'trigger', 'default': true },
+                field: { name: 'Синяя полоска прогресса просмотра' }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_torrent_layout', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Компактный список торрентов',
+                    description: 'Детали раздачи в две строки'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_btn_editor', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Редактор кнопок',
+                    description: 'Долгое нажатие на кнопку в карточке: скрыть, сдвинуть, переименовать'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_quick_exit', type: 'trigger', 'default': false },
+                field: {
+                    name: 'Выход без вопроса',
+                    description: 'Не спрашивать подтверждение при выходе из приложения'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
                 param: { name: 'trailer_bg_enable', type: 'trigger', 'default': true },
                 field: {
                     name: 'Трейлер на фоне',
@@ -586,8 +689,332 @@
         }
     }
 
+    // =====================================================================
+    //  ЧАСТЬ 3. Функции из плагина UI Style (interfaceStyle.js)
+    // =====================================================================
+
+    // только кнопки "Онлайн", "Торренты" и "Закладки", остальные убираем
+    function tuneButtons(body) {
+        try {
+            if (!opt('fsc_main_buttons', false)) return;
+
+            var box = body.find('.full-start-new__buttons').first();
+            if (!box.length) return;
+
+            var keep = body.find('.view--online, .view--torrent, .button--book');
+            box.children('.full-start__button').not(keep).remove();
+
+            ['.view--online', '.view--torrent', '.button--book'].forEach(function (sel) {
+                var b = body.find(sel).first();
+                if (b.length) box.append(b);
+            });
+        } catch (e) {}
+    }
+
+    // =====================================================================
+    //  ЧАСТЬ 4. Редактор кнопок карточки
+    //  Долгое нажатие на кнопку: скрыть, сдвинуть, переименовать.
+    //  Это моя упрощённая версия, а не копия card_buttons_editor.js.
+    // =====================================================================
+
+    function store(name, def) {
+        var v = Lampa.Storage.get(name, def);
+        return (v === undefined || v === null || v === '') ? def : v;
+    }
+
+    // устойчивый идентификатор кнопки по её классу (button--book, view--torrent и т.д.)
+    function btnId(b) {
+        var saved = b.attr('data-fsc-base');
+        if (saved) return saved;
+
+        var id = '';
+        var cls = String(b.attr('class') || '').split(/\s+/);
+
+        for (var i = 0; i < cls.length; i++) {
+            if (/^(button--|view--)/.test(cls[i]) && cls[i] !== 'button--priority') {
+                id = cls[i];
+                break;
+            }
+        }
+
+        if (!id) id = 'btn_' + ($.trim(b.text()) || 'unnamed');
+
+        b.attr('data-fsc-base', id);
+        return id;
+    }
+
+    function btnLabel(b) {
+        var s = b.find('span').first();
+        return $.trim(s.length ? s.text() : b.text()) || 'Кнопка';
+    }
+
+    function currentIds(body) {
+        var ids = [];
+        body.find('.full-start-new__buttons').first().children('.full-start__button').each(function () {
+            var id = $(this).attr('data-fsc-id');
+            if (id) ids.push(id);
+        });
+        return ids;
+    }
+
+    // применяем сохранённый порядок, скрытие и названия
+    function applyButtons(body) {
+        try {
+            if (!opt('fsc_btn_editor', true)) return;
+
+            var box = body.find('.full-start-new__buttons').first();
+            if (!box.length) return;
+
+            var order = store('fsc_btn_order', []);
+            var hide = store('fsc_btn_hide', []);
+            var titles = store('fsc_btn_titles', {});
+
+            var items = {};
+            var ids = [];
+
+            box.children('.full-start__button').each(function () {
+                var b = $(this);
+                var id = b.attr('data-fsc-id');
+
+                if (!id) {
+                    var base = btnId(b);
+                    var n = 1;
+                    id = base;
+                    while (items[id]) {
+                        n++;
+                        id = base + '_' + n;
+                    }
+                    b.attr('data-fsc-id', id);
+                }
+
+                items[id] = b;
+                ids.push(id);
+            });
+
+            var result = [];
+            order.forEach(function (id) {
+                if (items[id] && result.indexOf(id) === -1) result.push(id);
+            });
+            ids.forEach(function (id) {
+                if (result.indexOf(id) === -1) result.push(id);
+            });
+            result.forEach(function (id) { box.append(items[id]); });
+
+            ids.forEach(function (id) {
+                var b = items[id];
+                b.toggleClass('fsc-btn-hide', hide.indexOf(id) !== -1);
+
+                if (titles[id]) {
+                    var sp = b.find('span').first();
+                    if (sp.length) sp.text(titles[id]);
+                    else b.append($('<span></span>').text(titles[id]));
+                } else if (b.hasClass('button--options') && !b.find('span').length && opt('fsc_labels', true)) {
+                    b.append('<span>Ещё</span>');
+                }
+            });
+
+            box.children('.full-start__button')
+                .off('hover:long.fsc')
+                .on('hover:long.fsc', function () {
+                    editButton(body, $(this).attr('data-fsc-id'));
+                });
+        } catch (err) {
+            console.log('fullscreen_card: buttons error', err);
+        }
+    }
+
+    function backTo(ctrl) {
+        try { Lampa.Controller.toggle(ctrl); } catch (e) {}
+    }
+
+    function saveAndApply(body, ctrl) {
+        applyButtons(body);
+        backTo(ctrl);
+    }
+
+    function restoreHidden(body, ctrl) {
+        var hide = store('fsc_btn_hide', []).slice();
+        var box = body.find('.full-start-new__buttons').first();
+
+        var list = hide.map(function (hid) {
+            var b = box.children('[data-fsc-id="' + hid + '"]').first();
+            return { title: b.length ? btnLabel(b) : hid, id: hid };
+        });
+        list.push({ title: 'Вернуть все', id: '*' });
+
+        Lampa.Select.show({
+            title: 'Скрытые кнопки',
+            items: list,
+            onSelect: function (item) {
+                var left = (item.id === '*') ? [] : hide.filter(function (x) { return x !== item.id; });
+                Lampa.Storage.set('fsc_btn_hide', left);
+                saveAndApply(body, ctrl);
+            },
+            onBack: function () { backTo(ctrl); }
+        });
+    }
+
+    function editButton(body, id) {
+        if (!id) return;
+
+        var ctrl = 'content';
+        try {
+            var en = Lampa.Controller.enabled();
+            if (en && en.name) ctrl = en.name;
+        } catch (e) {}
+
+        var box = body.find('.full-start-new__buttons').first();
+        var btn = box.children('[data-fsc-id="' + id + '"]').first();
+        var label = btnLabel(btn);
+
+        var hide = store('fsc_btn_hide', []).slice();
+        var titles = $.extend({}, store('fsc_btn_titles', {}));
+
+        function move(dir) {
+            var all = currentIds(body);
+            var i = all.indexOf(id);
+            var j = i + dir;
+
+            // пропускаем скрытые кнопки
+            while (j >= 0 && j < all.length && hide.indexOf(all[j]) !== -1) j += dir;
+            if (i === -1 || j < 0 || j >= all.length) return backTo(ctrl);
+
+            var tmp = all[i];
+            all[i] = all[j];
+            all[j] = tmp;
+
+            Lampa.Storage.set('fsc_btn_order', all);
+            saveAndApply(body, ctrl);
+        }
+
+        var list = [
+            {
+                title: 'Скрыть кнопку',
+                onSelect: function () {
+                    hide.push(id);
+                    Lampa.Storage.set('fsc_btn_hide', hide);
+                    saveAndApply(body, ctrl);
+                }
+            },
+            { title: 'Сдвинуть влево', onSelect: function () { move(-1); } },
+            { title: 'Сдвинуть вправо', onSelect: function () { move(1); } },
+            {
+                title: 'Переименовать',
+                onSelect: function () {
+                    Lampa.Input.edit({
+                        free: true,
+                        title: 'Название кнопки',
+                        nosave: true,
+                        value: label,
+                        onBack: function () { backTo(ctrl); }
+                    }, function (val) {
+                        val = $.trim(val || '');
+                        if (val) {
+                            titles[id] = val;
+                            Lampa.Storage.set('fsc_btn_titles', titles);
+                        }
+                        saveAndApply(body, ctrl);
+                    });
+                }
+            }
+        ];
+
+        if (hide.length) {
+            list.push({
+                title: 'Вернуть скрытые кнопки (' + hide.length + ')',
+                onSelect: function () { restoreHidden(body, ctrl); }
+            });
+        }
+
+        list.push({
+            title: 'Сбросить все изменения',
+            onSelect: function () {
+                Lampa.Storage.set('fsc_btn_order', []);
+                Lampa.Storage.set('fsc_btn_hide', []);
+                Lampa.Storage.set('fsc_btn_titles', {});
+                try { Lampa.Noty.show('Сброшено. Откройте карточку заново, чтобы вернуть прежний порядок и названия'); } catch (e) {}
+                saveAndApply(body, ctrl);
+            }
+        });
+
+        Lampa.Select.show({
+            title: 'Кнопка: ' + label,
+            items: list,
+            onBack: function () { backTo(ctrl); }
+        });
+    }
+
+    function uiStyle(e, render) {
+        try {
+            var body = e.body || render;
+            var movie = e.data && e.data.movie;
+
+            // оригинальное название над основным
+            body.find('.fsc-orig').remove();
+
+            if (opt('fsc_orig_title', true) && movie) {
+                var t = movie.title || movie.name;
+                var o = movie.original_title || movie.original_name;
+
+                if (t && o && t !== o) {
+                    body.find('.full-start-new__title').first().before(
+                        $('<div class="full-start-new__title-original fsc-orig"></div>').text(o)
+                    );
+                }
+            }
+
+            tuneButtons(body);
+            applyButtons(body);
+            // другие плагины могут добавить свои кнопки чуть позже
+            setTimeout(function () {
+                tuneButtons(body);
+                applyButtons(body);
+            }, 700);
+        } catch (err) {
+            console.log('fullscreen_card: uiStyle error', err);
+        }
+    }
+
+    // выход из приложения без вопроса "Выйти?"
+    function installQuickExit() {
+        try {
+            if (!Lampa.Select || Lampa.Select._fsc_quick_exit) return;
+
+            var original = Lampa.Select.show;
+            var exiting = false;
+
+            Lampa.Select.show = function (object) {
+                if (opt('fsc_quick_exit', false) && object && object.items && typeof object.onSelect === 'function') {
+                    var item = null;
+
+                    for (var i = 0; i < object.items.length; i++) {
+                        if (object.items[i].out === true) {
+                            item = object.items[i];
+                            break;
+                        }
+                    }
+
+                    if (item) {
+                        if (exiting) return;
+                        exiting = true;
+
+                        object.onSelect(item);
+
+                        setTimeout(function () { exiting = false; }, 1000);
+                        return;
+                    }
+                }
+
+                return original.apply(this, arguments);
+            };
+
+            Lampa.Select._fsc_quick_exit = true;
+        } catch (e) {}
+    }
+
     function start() {
         addStyles();
+        installQuickExit();
         addSettings();
         apply();
 
@@ -605,6 +1032,7 @@
                 // данные могут дорисоваться чуть позже
                 setTimeout(function () { tagYear(render); }, 700);
 
+                uiStyle(e, render);
                 startTrailer(e);
             }
         });
