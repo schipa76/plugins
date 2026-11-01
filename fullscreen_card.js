@@ -31,6 +31,13 @@
     //  ЧАСТЬ 1. Оформление страницы фильма
     // =====================================================================
 
+    // короткие подсказки на экране о том, что делает трейлер (можно выключить в настройках)
+    function dbg(msg) {
+        try {
+            if (opt('trailer_bg_debug', true)) Lampa.Noty.show('Трейлер: ' + msg);
+        } catch (e) {}
+    }
+
     function apply() {
         $('body')
             .toggleClass('fsc-nofposter', !!opt('fsc_hide_poster', true))
@@ -95,7 +102,7 @@
 
             'body.fsc-layout .full-start-new__right > .full-start-new__rate-line{' +
                 'position:absolute !important;' +
-                'right:2em;' +
+                'right:0;' +
                 'bottom:1em;' +
                 'margin:0 !important;' +
                 'order:7 !important;' +
@@ -133,15 +140,34 @@
         }
 
         var t = setTimeout(function () { finish(false); }, 3500);
-        img.onload = function () { finish(true); };
-        img.onerror = function () { finish(false); };
-        img.src = 'https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg?_=' + Date.now();
+
+        // YouTube считается доступным, только если открываются оба адреса:
+        // картинки (i.ytimg.com) и сам youtube.com, с которого грузится плеер
+        var ok = 0;
+        function one(src) {
+            var im = new Image();
+            im.onload = function () {
+                ok++;
+                if (ok >= 2) finish(true);
+            };
+            im.onerror = function () { finish(false); };
+            im.src = src + (src.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now();
+        }
+
+        one('https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg');
+        one('https://www.youtube.com/favicon.ico');
     }
 
     function resolveSource(cb) {
         var s = String(opt('trailer_bg_source', 'auto'));
-        if (s === 'youtube' || s === 'rutube') return cb(s);
-        checkYouTube(function (ok) { cb(ok ? 'youtube' : 'rutube'); });
+        if (s === 'youtube' || s === 'rutube') {
+            dbg('источник ' + (s === 'youtube' ? 'YouTube' : 'Rutube'));
+            return cb(s);
+        }
+        checkYouTube(function (ok) {
+            dbg(ok ? 'YouTube доступен, беру его' : 'YouTube недоступен, беру Rutube');
+            cb(ok ? 'youtube' : 'rutube');
+        });
     }
 
     // ---------- YouTube: трейлер через TMDB ----------
@@ -206,6 +232,8 @@
                 var list = (json && json.results) || [];
                 var best = null;
 
+                dbg('Rutube нашёл видео: ' + list.length + (list[0] ? ', первое: ' + String(list[0].title).slice(0, 40) : ''));
+
                 for (var i = 0; i < list.length; i++) {
                     var it = list[i];
                     var t = String(it.title || '').toLowerCase();
@@ -221,12 +249,18 @@
                     }
                 }
 
-                if (!best) return cb(null);
+                if (!best) {
+                    dbg('Rutube: подходящего трейлера среди результатов нет');
+                    return cb(null);
+                }
 
                 var id = best.id || String(best.video_url || '').split('/').filter(Boolean).pop();
                 cb(id || null);
             })
-            .catch(function () { cb(null); });
+            .catch(function (err) {
+                dbg('Rutube: поиск не сработал (' + err + ')');
+                cb(null);
+            });
     }
 
     // ---------- слой с видео ----------
@@ -309,9 +343,14 @@
             .then(function (r) { return r.json(); })
             .then(function (json) {
                 var b = json && json.video_balancer;
-                cb((b && (b.m3u8 || b['default'])) || null);
+                var url = (b && (b.m3u8 || b['default'])) || null;
+                if (!url) dbg('Rutube: ссылка на поток не получена');
+                cb(url);
             })
-            .catch(function () { cb(null); });
+            .catch(function (err) {
+                dbg('Rutube: запрос потока не сработал (' + err + ')');
+                cb(null);
+            });
     }
 
     function showVideo(url, id, my) {
@@ -337,6 +376,7 @@
             if (failed) return;
             failed = true;
             clearTimeout(guard);
+            dbg('прямой поток не запустился, открываю плеер Rutube');
             removeLayer();
             // прямой поток не получился - запасной вариант: плеер Rutube (может показать рекламу)
             if (my === token) showIframe('rutube', id);
@@ -346,6 +386,7 @@
         video.addEventListener('error', fail);
         video.addEventListener('playing', function () {
             clearTimeout(guard);
+            dbg('играет (Rutube, прямой поток)');
             layer.addClass('trailer-bg--ready');
         });
 
@@ -426,6 +467,7 @@
 
                 function done(id) {
                     // трейлера нет - остаётся обычный фон
+                    if (!id) dbg('не найден, остаётся обычный фон');
                     if (!id || my !== token) return;
                     show(source, id, my);
                     watch();
@@ -496,6 +538,15 @@
                 field: {
                     name: 'Источник трейлеров',
                     description: 'Авто: если YouTube недоступен, берётся Rutube'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'trailer_bg_debug', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Подсказки о запуске трейлера',
+                    description: 'Короткие сообщения на экране: что нашлось и почему трейлер не играет'
                 }
             });
 
