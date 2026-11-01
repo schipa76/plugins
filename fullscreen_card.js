@@ -31,10 +31,34 @@
     //  ЧАСТЬ 1. Оформление страницы фильма
     // =====================================================================
 
-    // короткие подсказки на экране о том, что делает трейлер (можно выключить в настройках)
+    // подсказки о работе трейлера: шаги собираются в одно сообщение на экране
+    // (можно выключить в настройках)
+    var dbgLog = [];
+    var dbgTimer = null;
+
+    function dbgReset() {
+        dbgLog = [];
+        clearTimeout(dbgTimer);
+    }
+
     function dbg(msg) {
         try {
-            if (opt('trailer_bg_debug', true)) Lampa.Noty.show('Трейлер: ' + msg);
+            if (!opt('trailer_bg_debug', true)) return;
+
+            dbgLog.push(msg);
+            clearTimeout(dbgTimer);
+
+            // ждём, пока закончатся шаги, и показываем всё сразу
+            dbgTimer = setTimeout(function () {
+                var text = 'Трейлер: ' + dbgLog.join(' → ');
+                dbgLog = [];
+
+                try {
+                    Lampa.Noty.show(text, { time: 12000 });
+                } catch (e) {
+                    Lampa.Noty.show(text);
+                }
+            }, 2500);
         } catch (e) {}
     }
 
@@ -242,33 +266,72 @@
     }
 
     function loadYouTube(card, method, data, cb) {
-        var found = pickYouTube(data && data.videos && data.videos.results);
+        // видео могут лежать в данных карточки в разных местах
+        var inline = (data && data.videos && data.videos.results) ||
+            (card && card.videos && card.videos.results) || [];
+
+        dbg('YouTube: в карточке видео ' + inline.length);
+
+        var found = pickYouTube(inline);
         if (found) return cb(found);
 
         var type = method || ((card.first_air_date && !card.title) ? 'tv' : 'movie');
+        var langs = ['ru-RU', 'en-US'];
 
-        try {
-            var url = Lampa.TMDB.api(type + '/' + card.id + '/videos?api_key=' + Lampa.TMDB.key() + '&language=en-US');
+        function next(i) {
+            if (i >= langs.length) return cb(null);
+
+            var url;
+            try {
+                url = Lampa.TMDB.api(type + '/' + card.id + '/videos?api_key=' + Lampa.TMDB.key() + '&language=' + langs[i]);
+            } catch (err) {
+                dbg('YouTube: нет доступа к TMDB (' + err + ')');
+                return cb(null);
+            }
+
             fetch(url)
                 .then(function (r) { return r.json(); })
-                .then(function (json) { cb(pickYouTube(json && json.results)); })
-                .catch(function () { cb(null); });
-        } catch (e) {
-            cb(null);
+                .then(function (json) {
+                    var list = (json && json.results) || [];
+                    dbg('YouTube: TMDB ' + langs[i] + ', видео ' + list.length);
+
+                    var key = pickYouTube(list);
+                    if (key) cb(key);
+                    else next(i + 1);
+                })
+                .catch(function (err) {
+                    dbg('YouTube: запрос TMDB не сработал (' + err + ')');
+                    next(i + 1);
+                });
         }
+
+        next(0);
     }
 
     // ---------- Rutube: поиск трейлера по названию ----------
 
+    // приводим название к простому виду: без регистра, знаков и буквы "ё"
+    function norm(s) {
+        return String(s || '')
+            .toLowerCase()
+            .replace(/ё/g, 'е')
+            .replace(/[^a-zа-я0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/^ | $/g, '');
+    }
+
     function loadRutube(card, cb) {
-        var title = card.title || card.name || card.original_title || card.original_name || '';
+        var titleRu = card.title || card.name || '';
+        var titleOrig = card.original_title || card.original_name || '';
+        var title = titleRu || titleOrig;
         if (!title) return cb(null);
 
         var date = card.release_date || card.first_air_date || '';
         var year = date ? String(date).slice(0, 4) : '';
         var query = title + ' ' + year + ' трейлер';
         var url = 'https://rutube.ru/api/search/video/?format=json&query=' + encodeURIComponent(query);
-        var low = title.toLowerCase();
+
+        var names = [norm(titleRu), norm(titleOrig)].filter(function (x) { return x.length > 1; });
 
         fetch(url)
             .then(function (r) { return r.json(); })
@@ -276,16 +339,18 @@
                 var list = (json && json.results) || [];
                 var best = null;
 
-                dbg('Rutube нашёл видео: ' + list.length + (list[0] ? ', первое: ' + String(list[0].title).slice(0, 40) : ''));
+                dbg('Rutube: результатов ' + list.length);
 
                 for (var i = 0; i < list.length; i++) {
                     var it = list[i];
-                    var t = String(it.title || '').toLowerCase();
+                    var raw = String(it.title || '');
+                    var t = norm(raw);
                     var dur = parseInt(it.duration, 10) || 0;
 
-                    var isTrailer = t.indexOf('трейлер') !== -1 || t.indexOf('trailer') !== -1 || t.indexOf('тизер') !== -1;
-                    var hasTitle = t.indexOf(low) !== -1;
-                    var okLen = dur >= 20 && dur <= 330;
+                    var isTrailer = /трейлер|trailer|тизер|teaser/.test(t);
+                    var hasTitle = names.some(function (n) { return t.indexOf(n) !== -1; });
+                    // если длительность не пришла, не отбрасываем ролик
+                    var okLen = dur === 0 || (dur >= 20 && dur <= 360);
 
                     if (isTrailer && hasTitle && okLen) {
                         best = it;
@@ -294,9 +359,15 @@
                 }
 
                 if (!best) {
-                    dbg('Rutube: подходящего трейлера среди результатов нет');
+                    // показываем, что именно нашлось, чтобы понять причину
+                    var sample = list.slice(0, 3).map(function (it) {
+                        return '«' + String(it.title || '?').slice(0, 30) + '» ' + (it.duration || '?') + 'с';
+                    }).join('; ');
+                    dbg('Rutube: подходящего нет' + (sample ? ' (' + sample + ')' : ''));
                     return cb(null);
                 }
+
+                dbg('Rutube: выбрал «' + String(best.title).slice(0, 40) + '»');
 
                 var id = best.id || String(best.video_url || '').split('/').filter(Boolean).pop();
                 cb(id || null);
@@ -496,11 +567,18 @@
 
     function startTrailer(e) {
         stopTrailer();
+        dbgReset();
         if (!opt('trailer_bg_enable', true)) return;
 
         var my = ++token;
         var card = e.data && e.data.movie;
-        if (!card || !card.id) return;
+
+        if (!card || !card.id) {
+            dbg('нет данных карточки');
+            return;
+        }
+
+        dbg('«' + String(card.title || card.name || card.original_title || '?').slice(0, 30) + '»');
 
         var delay = parseInt(opt('trailer_bg_delay', '3'), 10) || 3;
         var method = e.object && e.object.method;
@@ -513,6 +591,7 @@
                     // трейлера нет - остаётся обычный фон
                     if (!id) dbg('не найден, остаётся обычный фон');
                     if (!id || my !== token) return;
+                    dbg('нашёл, запускаю');
                     show(source, id, my);
                     watch();
                 }
