@@ -67,6 +67,7 @@
             .toggleClass('fsc-nofposter', !!opt('fsc_hide_poster', true))
             .toggleClass('fsc-bottom', !!opt('fsc_bottom', true))
             .toggleClass('fsc-layout', !!opt('fsc_layout', true))
+            .toggleClass('fsc-main-btns', !!opt('fsc_main_buttons', true))
             .toggleClass('fsc-labels', !!opt('fsc_labels', true))
             .toggleClass('fsc-nosource', !!opt('fsc_hide_source', true))
             .toggleClass('fsc-blue', !!opt('fsc_blue_progress', true))
@@ -181,9 +182,16 @@
             '.trailer-bg--ready{opacity:1;}' +
             '.trailer-bg__frame{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-height:100vh;min-width:177.78vh;transform:translate(-50%,-50%);}' +
             '.trailer-bg__frame iframe{width:100%;height:100%;border:0;}' +
-            '.trailer-bg__frame video{width:100%;height:100%;object-fit:cover;background:#000;}' +
+            '.trailer-bg__frame video{width:100%;height:100%;object-fit:cover;background:#000;transform-origin:50% 50%;transition:transform .8s ease;}' +
             '.trailer-bg video::-webkit-media-controls,.trailer-bg video::-webkit-media-controls-start-playback-button,.trailer-bg video::-webkit-media-controls-overlay-play-button{display:none !important;-webkit-appearance:none;opacity:0;}' +
             '.fsc-bg-hidden{opacity:0 !important;transition:opacity .6s ease;}' +
+            '.fsc-bd-fix{transform:none !important;-webkit-mask-image:none !important;mask-image:none !important;left:0 !important;right:0 !important;width:100% !important;margin-left:0 !important;object-fit:cover !important;object-position:50% 50% !important;background-position:50% 50% !important;background-size:cover !important;}' +
+            '.fsc-nograd{background-image:none !important;}' +
+            '.fsc-nomask{-webkit-mask-image:none !important;mask-image:none !important;}' +
+            '.fsc-nobefore::before{background:none !important;background-image:none !important;}' +
+            '.fsc-noafter::after{background:none !important;background-image:none !important;}' +
+            // лишние кнопки скрываются сразу, ещё до того как их уберёт скрипт
+            'body.fsc-main-btns .full-start-new__buttons .full-start__button:not(.view--online):not(.view--torrent):not(.button--book){display:none !important;}' +
             '.fsc-bg-clear{background-image:none !important;}' +
 
             '</style>'
@@ -313,8 +321,8 @@
 
     // ---------- Rutube: поиск трейлера по названию ----------
 
-    // Запрос JSON несколькими способами подряд. Браузер часто блокирует запросы
-    // к чужим сайтам (CORS), поэтому сначала пробуем сетевой модуль самой Lampa
+    // Запрос несколькими способами подряд (JSON или текст). Браузер часто блокирует
+    // запросы к чужим сайтам (CORS), поэтому сначала пробуем сетевой модуль самой Lampa
     // (на Android он ходит в обход этого ограничения), потом обычный fetch.
     function errText(e) {
         if (!e) return 'ошибка';
@@ -324,9 +332,10 @@
         return String(e);
     }
 
-    function httpJson(url, cb) {
+    function httpGet(url, asText, cb) {
         var errors = [];
         var tries = [];
+        var params = asText ? { dataType: 'text' } : undefined;
 
         var proxy = String(opt('trailer_bg_proxy', '') || '').replace(/^\s+|\s+$/g, '');
 
@@ -337,35 +346,32 @@
                     run: function (ok, fail) {
                         var n = new Lampa.Reguest();
                         if (typeof n.native !== 'function') return fail('нет native');
-                        n.native(url, ok, fail);
+                        n.native(url, ok, fail, false, params);
                     }
                 });
 
                 tries.push({
                     name: 'lampa',
                     run: function (ok, fail) {
-                        new Lampa.Reguest().silent(url, ok, fail);
+                        new Lampa.Reguest().silent(url, ok, fail, false, params);
                     }
                 });
             }
         } catch (e) {}
 
-        tries.push({
-            name: 'fetch',
-            run: function (ok, fail) {
-                fetch(url).then(function (r) { return r.json(); }).then(ok).catch(fail);
-            }
-        });
+        function viaFetch(u) {
+            return function (ok, fail) {
+                fetch(u)
+                    .then(function (r) { return asText ? r.text() : r.json(); })
+                    .then(ok)
+                    .catch(fail);
+            };
+        }
+
+        tries.push({ name: 'fetch', run: viaFetch(url) });
 
         // свой прокси из настроек (необязательно): адрес дописывается перед ссылкой
-        if (proxy) {
-            tries.push({
-                name: 'прокси',
-                run: function (ok, fail) {
-                    fetch(proxy + url).then(function (r) { return r.json(); }).then(ok).catch(fail);
-                }
-            });
-        }
+        if (proxy) tries.push({ name: 'прокси', run: viaFetch(proxy + url) });
 
         function next(i) {
             if (i >= tries.length) return cb(errors.join('; '), null);
@@ -378,12 +384,16 @@
                 done = true;
                 clearTimeout(guard);
 
-                var json = data;
-                if (!err && typeof data === 'string') {
-                    try { json = JSON.parse(data); } catch (e) { json = null; }
+                var value = data;
+                if (!err && !asText && typeof data === 'string') {
+                    try { value = JSON.parse(data); } catch (e) { value = null; }
                 }
 
-                if (!err && json && typeof json === 'object') return cb(null, json, t.name);
+                var good = !err && (asText
+                    ? (typeof value === 'string' && value.length > 0)
+                    : (value && typeof value === 'object'));
+
+                if (good) return cb(null, value, t.name);
 
                 errors.push(t.name + ': ' + (err ? errText(err) : 'пустой ответ'));
                 next(i + 1);
@@ -400,6 +410,9 @@
 
         next(0);
     }
+
+    function httpJson(url, cb) { httpGet(url, false, cb); }
+    function httpText(url, cb) { httpGet(url, true, cb); }
 
     // приводим название к простому виду: без регистра, знаков и буквы "ё"
     function norm(s) {
@@ -571,6 +584,138 @@
         } catch (e) {}
     }
 
+    // ---------- картинка фона карточки: без сдвига вправо и без затемнения слева ----------
+
+    // Через секунду после открытия карточки Lampa двигает фоновую картинку вправо и
+    // накладывает слева затемнение. Названия нужных элементов заранее неизвестны, поэтому
+    // ищем крупные элементы и убираем у них смещение, маску и градиент. Всё, что изменили,
+    // запоминаем и возвращаем при выходе из карточки.
+    var cardFix = { els: [], props: [], seen: {} };
+    var cardFixTimers = [];
+
+    function describeEl(el) {
+        var raw = (el.className && el.className.baseVal !== undefined) ? el.className.baseVal : el.className;
+        var c = String(raw || '').split(/\s+/).filter(function (x) {
+            return x && x.indexOf('fsc-') !== 0;
+        }).slice(0, 2).join('.');
+
+        return el.tagName.toLowerCase() + (c ? '.' + c : '');
+    }
+
+    function restoreCardFix() {
+        cardFixTimers.forEach(function (t) { clearTimeout(t); });
+        cardFixTimers = [];
+
+        try {
+            $(cardFix.els).removeClass('fsc-bd-fix fsc-nograd fsc-nobefore fsc-noafter fsc-nomask');
+
+            cardFix.props.forEach(function (p) {
+                if (p.old) p.el.style.setProperty(p.prop, p.old, p.priority || '');
+                else p.el.style.removeProperty(p.prop);
+            });
+        } catch (e) {}
+
+        cardFix = { els: [], props: [], seen: {} };
+    }
+
+    function fixCardBackdrop() {
+        try {
+            if (!opt('fsc_fix_backdrop', true)) return;
+
+            var act = Lampa.Activity.active();
+            if (!act || act.component !== 'full') return;
+
+            var w = window.innerWidth || 1280;
+            var h = window.innerHeight || 720;
+            var layerEl = document.getElementById(LAYER_ID);
+            var touched = [];
+
+            $('body').find('img, div, section, span').each(function () {
+                var el = this;
+
+                if (layerEl && (layerEl === el || layerEl.contains(el) || el.contains(layerEl))) return;
+
+                var r = el.getBoundingClientRect();
+                if (r.width < w * 0.35 || r.height < h * 0.5) return;
+
+                var cs = window.getComputedStyle(el);
+                var bi = cs.backgroundImage || '';
+                var hasUrl = bi.indexOf('url(') !== -1;
+                var hasGrad = bi.indexOf('gradient') !== -1;
+                var flags = '';
+
+                // сама картинка фона: убираем смещение, маску и сдвиг
+                if (el.tagName === 'IMG' || hasUrl) {
+                    $(el).addClass('fsc-bd-fix');
+                    cardFix.els.push(el);
+                    flags += 'B';
+                }
+
+                // затемнение градиентом в самом элементе
+                if (hasGrad) {
+                    if (hasUrl) {
+                        // и картинка, и градиент в одном свойстве: оставляем только картинку
+                        var urls = bi.match(/url\((?:"[^"]*"|'[^']*'|[^)]*)\)/g);
+                        if (urls) {
+                            cardFix.props.push({
+                                el: el,
+                                prop: 'background-image',
+                                old: el.style.getPropertyValue('background-image'),
+                                priority: el.style.getPropertyPriority('background-image')
+                            });
+                            el.style.setProperty('background-image', urls.join(','), 'important');
+                            flags += 'G';
+                        }
+                    } else {
+                        $(el).addClass('fsc-nograd');
+                        cardFix.els.push(el);
+                        flags += 'G';
+                    }
+                }
+
+                // затемнение часто сделано псевдоэлементами ::before / ::after
+                ['::before', '::after'].forEach(function (ps) {
+                    var pbi = window.getComputedStyle(el, ps).backgroundImage || '';
+                    if (pbi.indexOf('gradient') !== -1) {
+                        $(el).addClass(ps === '::before' ? 'fsc-nobefore' : 'fsc-noafter');
+                        cardFix.els.push(el);
+                        flags += ps === '::before' ? 'b' : 'a';
+                    }
+                });
+
+                // маска, которой картинку растворяют слева
+                var mask = cs.webkitMaskImage || cs.maskImage || '';
+                if (mask && mask !== 'none') {
+                    $(el).addClass('fsc-nomask');
+                    cardFix.els.push(el);
+                    flags += 'M';
+                }
+
+                if (cs.transform && cs.transform !== 'none') flags += 'T';
+
+                if (flags) {
+                    var key = describeEl(el) + '[' + flags + ']';
+                    if (!cardFix.seen[key]) {
+                        cardFix.seen[key] = true;
+                        touched.push(key);
+                    }
+                }
+            });
+
+            if (touched.length) dbg('фон: ' + touched.join(', '));
+        } catch (e) {}
+    }
+
+    // проверяем несколько раз: смещение и затемнение появляются не сразу
+    function scheduleCardFix() {
+        restoreCardFix();
+        if (!opt('fsc_fix_backdrop', true)) return;
+
+        [0, 250, 700, 1300, 2200, 3500, 5000].forEach(function (ms) {
+            cardFixTimers.push(setTimeout(fixCardBackdrop, ms));
+        });
+    }
+
     function removeLayer() {
         restoreBackdrop();
 
@@ -607,8 +752,239 @@
         });
     }
 
-    function showVideo(url, id, my) {
+    // ---------- качество: выбираем нужный вариант из общего плейлиста ----------
+
+    function resolveUrl(u, base) {
+        try {
+            return new URL(u, base).href;
+        } catch (e) {
+            if (/^https?:/i.test(u)) return u;
+            return base.slice(0, base.lastIndexOf('/') + 1) + u;
+        }
+    }
+
+    function parseVariants(text, base) {
+        var lines = String(text).split(/\r?\n/);
+        var out = [];
+
+        for (var i = 0; i < lines.length; i++) {
+            var l = lines[i];
+            if (l.indexOf('#EXT-X-STREAM-INF') !== 0) continue;
+
+            var res = /RESOLUTION=(\d+)x(\d+)/i.exec(l);
+            var bw = /[^-]BANDWIDTH=(\d+)/i.exec(l);
+            var uri = '';
+
+            for (var j = i + 1; j < lines.length; j++) {
+                var t = lines[j].replace(/^\s+|\s+$/g, '');
+                if (t && t.charAt(0) !== '#') {
+                    uri = t;
+                    break;
+                }
+            }
+
+            if (uri) {
+                out.push({
+                    url: resolveUrl(uri, base),
+                    w: res ? parseInt(res[1], 10) : 0,
+                    h: res ? parseInt(res[2], 10) : 0,
+                    bw: bw ? parseInt(bw[1], 10) : 0
+                });
+            }
+        }
+
+        return {
+            variants: out,
+            audioGroup: /#EXT-X-MEDIA:[^\n]*TYPE=AUDIO/i.test(text)
+        };
+    }
+
+    // want: нужная высота кадра (например 1080) или 'max'.
+    // Берём ближайшее качество не ниже нужного, а если такого нет - самое высокое.
+    function pickVariant(list, want) {
+        if (!list.length) return null;
+
+        var known = list.filter(function (v) { return v.h > 0; });
+        if (!known.length) {
+            return list.slice().sort(function (a, b) { return b.bw - a.bw; })[0];
+        }
+
+        var byHeightDesc = known.slice().sort(function (a, b) { return b.h - a.h || b.bw - a.bw; });
+        if (want === 'max') return byHeightDesc[0];
+
+        var up = known
+            .filter(function (v) { return v.h >= want; })
+            .sort(function (a, b) { return a.h - b.h || b.bw - a.bw; });
+
+        return up.length ? up[0] : byHeightDesc[0];
+    }
+
+    // cb(ссылка, запасная ссылка на общий плейлист)
+    function bestStream(master, cb) {
+        var q = String(opt('trailer_bg_quality', '1080'));
+        if (q === 'auto') return cb(master, null);
+
+        httpText(master, function (err, text) {
+            if (err) {
+                dbg('Rutube: список качеств не получен, играю как есть');
+                return cb(master, null);
+            }
+
+            var info = parseVariants(text, master);
+            if (!info.variants.length) return cb(master, null);
+
+            // со звуком нужен общий плейлист: звук может лежать отдельной дорожкой
+            if (info.audioGroup && opt('trailer_bg_sound', false)) {
+                dbg('Rutube: звук отдельной дорожкой, качество выбирает Rutube');
+                return cb(master, null);
+            }
+
+            var best = pickVariant(info.variants, q === 'max' ? 'max' : (parseInt(q, 10) || 1080));
+            if (!best) return cb(master, null);
+
+            var heights = [];
+            info.variants.forEach(function (v) {
+                if (v.h && heights.indexOf(v.h) === -1) heights.push(v.h);
+            });
+            heights.sort(function (a, b) { return a - b; });
+
+            dbg('Rutube: качество ' + (best.h ? best.h + 'p' : 'максимальное') + (heights.length ? ' (есть ' + heights.join('/') + ')' : ''));
+            cb(best.url, master);
+        });
+    }
+
+    // ---------- чёрные полосы в самом видео ----------
+
+    // Разбираем кадр: сколько строк и столбцов с краёв почти чёрные.
+    // data - пиксели RGBA, w x h - размер уменьшенного кадра.
+    function analyzeBars(data, w, h) {
+        var TH = 34; // ниже этой яркости считаем чёрным
+        var rowMax = [];
+        var colMax = [];
+        var x, y, i, lum;
+
+        for (y = 0; y < h; y++) rowMax[y] = 0;
+        for (x = 0; x < w; x++) colMax[x] = 0;
+
+        for (y = 0; y < h; y++) {
+            for (x = 0; x < w; x++) {
+                i = (y * w + x) * 4;
+                lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+                if (lum > rowMax[y]) rowMax[y] = lum;
+                if (lum > colMax[x]) colMax[x] = lum;
+            }
+        }
+
+        var top = 0;
+        while (top < h && rowMax[top] < TH) top++;
+
+        var bottom = 0;
+        while (bottom < h && rowMax[h - 1 - bottom] < TH) bottom++;
+
+        var left = 0;
+        while (left < w && colMax[left] < TH) left++;
+
+        var right = 0;
+        while (right < w && colMax[w - 1 - right] < TH) right++;
+
+        return { top: top, bottom: bottom, left: left, right: right };
+    }
+
+    // По найденным полосам считаем увеличение и сдвиг, чтобы картинка заполнила экран.
+    // frac: доли полос от размера кадра (0..1).
+    function zoomFor(fT, fB, fL, fR) {
+        var zV = 1 / (1 - fT - fB);
+        var zH = 1 / (1 - fL - fR);
+        var z = Math.min(Math.max(zV, zH), 1.7);
+
+        if (!(z >= 1.04)) z = 1; // мелкие полосы не трогаем
+
+        return { z: z, dx: (fL - fR) / 2, dy: (fT - fB) / 2 };
+    }
+
+    function applyZoom(video, zoom) {
+        if (!zoom || zoom.z <= 1) {
+            video.style.transform = '';
+            return;
+        }
+
+        video.style.transform = 'scale(' + zoom.z.toFixed(3) + ') translate(' +
+            (-zoom.dx * 100).toFixed(2) + '%,' + (-zoom.dy * 100).toFixed(2) + '%)';
+    }
+
+    function startBarWatch(video, mode) {
+        if (mode === 'off') return;
+
+        if (mode !== 'auto') {
+            var fixed = parseFloat(mode);
+            if (fixed > 1) applyZoom(video, { z: fixed, dx: 0, dy: 0 });
+            return;
+        }
+
+        var W = 128;
+        var H = 72;
+        var canvas = document.createElement('canvas');
+        canvas.width = W;
+        canvas.height = H;
+        var ctx = canvas.getContext('2d');
+
+        var best = null; // минимальные полосы по всем кадрам: настоящие полосы есть всегда,
+        var count = 0;   // а тёмные сцены дают лишь временное завышение
+        var good = 0;
+        var lastZ = 1;
+
+        function sample() {
+            if (!document.body.contains(video)) return;
+            count++;
+
+            var info;
+            try {
+                ctx.drawImage(video, 0, 0, W, H);
+                info = analyzeBars(ctx.getImageData(0, 0, W, H).data, W, H);
+            } catch (e) {
+                dbg('кадр недоступен, полосы не убрать (' + errText(e) + ')');
+                return;
+            }
+
+            var usable = (info.top + info.bottom) <= H * 0.55 && (info.left + info.right) <= W * 0.55;
+
+            if (usable) {
+                good++;
+
+                if (!best) {
+                    best = { top: info.top, bottom: info.bottom, left: info.left, right: info.right };
+                } else {
+                    best.top = Math.min(best.top, info.top);
+                    best.bottom = Math.min(best.bottom, info.bottom);
+                    best.left = Math.min(best.left, info.left);
+                    best.right = Math.min(best.right, info.right);
+                }
+
+                var zoom = zoomFor(best.top / H, best.bottom / H, best.left / W, best.right / W);
+                applyZoom(video, zoom);
+
+                if (Math.abs(zoom.z - lastZ) >= 0.03) {
+                    dbg('полосы: увеличение ×' + zoom.z.toFixed(2));
+                    lastZ = zoom.z;
+                }
+            }
+
+            if (count < 12) setTimeout(sample, 1000);
+            else if (!good) dbg('не удалось определить чёрные полосы');
+        }
+
+        setTimeout(sample, 500);
+    }
+
+    // ---------- сам видеоплеер ----------
+
+    // opts.cors - просить доступ к кадру (нужен для поиска полос), opts.alt - запасной адрес потока
+    function showVideo(url, id, my, opts) {
+        opts = opts || {};
+
         var sound = opt('trailer_bg_sound', false);
+        var zoomMode = String(opt('trailer_bg_zoom', 'auto'));
+        var cors = (opts.cors === undefined) ? (zoomMode === 'auto') : opts.cors;
 
         var layer = $(
             '<div id="' + LAYER_ID + '" class="trailer-bg">' +
@@ -626,14 +1002,30 @@
         var failed = false;
         var guard = null;
 
+        if (cors) video.crossOrigin = 'anonymous';
+
         function fail() {
             if (failed) return;
             failed = true;
             clearTimeout(guard);
-            dbg('прямой поток не запустился, открываю плеер Rutube');
             removeLayer();
+
+            if (my !== token) return;
+
+            if (cors) {
+                // сервер не разрешил доступ к кадру - играем без поиска полос
+                dbg('без доступа к кадру, пробую без CORS');
+                return showVideo(url, id, my, { cors: false, alt: opts.alt });
+            }
+
+            if (opts.alt) {
+                dbg('выбранное качество не запустилось, беру обычный поток');
+                return showVideo(opts.alt, id, my, { cors: false });
+            }
+
             // прямой поток не получился - запасной вариант: плеер Rutube (может показать рекламу)
-            if (my === token) showIframe('rutube', id);
+            dbg('прямой поток не запустился, открываю плеер Rutube');
+            showIframe('rutube', id);
         }
 
         video.muted = !sound;
@@ -643,10 +1035,12 @@
             dbg('играет (Rutube, прямой поток)');
             layer.addClass('trailer-bg--ready');
             hideBackdrop();
+            startBarWatch(video, cors ? zoomMode : (zoomMode === 'auto' ? 'off' : zoomMode));
         });
 
-        // если за 10 секунд ничего не заиграло - считаем, что не вышло
-        guard = setTimeout(fail, 10000);
+        // если за несколько секунд ничего не заиграло - считаем, что не вышло
+        // (с CORS ждём меньше: если сервер не разрешил, быстрее перейдём к обычному запуску)
+        guard = setTimeout(fail, cors ? 7000 : 12000);
 
         function tryPlay() {
             var p = video.play();
@@ -681,8 +1075,12 @@
         if (source === 'rutube' && opt('trailer_bg_rutube_direct', true)) {
             rutubeStream(id, function (url) {
                 if (my !== token) return;
-                if (url) showVideo(url, id, my);
-                else showIframe('rutube', id);
+                if (!url) return showIframe('rutube', id);
+
+                bestStream(url, function (best, alt) {
+                    if (my !== token) return;
+                    showVideo(best, id, my, { alt: alt });
+                });
             });
         } else {
             showIframe(source, id);
@@ -702,7 +1100,7 @@
         watcher = setInterval(function () {
             var act = Lampa.Activity.active();
             if (!act || act.component !== 'full') stopTrailer();
-        }, 800);
+        }, 250);
     }
 
     function startTrailer(e) {
@@ -801,7 +1199,7 @@
 
             Lampa.SettingsApi.addParam({
                 component: 'fullscreen_card',
-                param: { name: 'fsc_main_buttons', type: 'trigger', 'default': false },
+                param: { name: 'fsc_main_buttons', type: 'trigger', 'default': true },
                 field: {
                     name: 'Только основные кнопки',
                     description: 'Оставить Онлайн, Торренты и Закладки, остальные кнопки убрать'
@@ -867,6 +1265,43 @@
                 field: {
                     name: 'Источник трейлеров',
                     description: 'Авто: если YouTube недоступен, берётся Rutube'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: {
+                    name: 'trailer_bg_quality',
+                    type: 'select',
+                    values: { '1080': 'Full HD (1080p)', '720': 'HD (720p)', 'max': 'Максимальное', 'auto': 'Авто (как выберет Rutube)' },
+                    'default': '1080'
+                },
+                field: {
+                    name: 'Качество трейлера (Rutube)',
+                    description: 'Берётся ближайшее качество не ниже выбранного. Нужен выключенный звук'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: {
+                    name: 'trailer_bg_zoom',
+                    type: 'select',
+                    values: { 'auto': 'Авто (по кадру)', 'off': 'Выключено', '1.2': 'Всегда ×1.2', '1.34': 'Всегда ×1.34 (для кино 2.39:1)' },
+                    'default': 'auto'
+                },
+                field: {
+                    name: 'Убрать чёрные полосы в трейлере',
+                    description: 'Увеличивает видео, чтобы оно закрыло весь экран. Края слева и справа обрезаются'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_fix_backdrop', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Фон карточки без сдвига и затемнения',
+                    description: 'Картинка остаётся по центру, затемнение слева убирается'
                 }
             });
 
@@ -940,7 +1375,7 @@
     // только кнопки "Онлайн", "Торренты" и "Закладки", остальные убираем
     function tuneButtons(body) {
         try {
-            if (!opt('fsc_main_buttons', false)) return;
+            if (!opt('fsc_main_buttons', true)) return;
 
             var box = body.find('.full-start-new__buttons').first();
             if (!box.length) return;
@@ -1304,6 +1739,45 @@
         });
     }
 
+    var btnObserver = null;
+
+    // Другие плагины добавляют свои кнопки с задержкой. Следим за блоком кнопок
+    // несколько секунд и сразу убираем лишнее, чтобы они не мелькали на экране.
+    function watchButtons(body) {
+        try {
+            if (btnObserver) {
+                btnObserver.disconnect();
+                btnObserver = null;
+            }
+
+            if (!window.MutationObserver) return;
+
+            var root = body && body[0];
+            if (!root) return;
+
+            var obs = new MutationObserver(function () {
+                obs.disconnect();
+
+                try {
+                    tuneButtons(body);
+                    applyButtons(body);
+                } catch (err) {}
+
+                setTimeout(function () {
+                    if (btnObserver === obs) obs.observe(root, { childList: true, subtree: true });
+                }, 0);
+            });
+
+            obs.observe(root, { childList: true, subtree: true });
+            btnObserver = obs;
+
+            setTimeout(function () {
+                obs.disconnect();
+                if (btnObserver === obs) btnObserver = null;
+            }, 8000);
+        } catch (err) {}
+    }
+
     function uiStyle(e, render) {
         try {
             var body = e.body || render;
@@ -1325,7 +1799,8 @@
 
             tuneButtons(body);
             applyButtons(body);
-            // другие плагины могут добавить свои кнопки чуть позже
+            watchButtons(body);
+            // на всякий случай ещё раз чуть позже
             setTimeout(function () {
                 tuneButtons(body);
                 applyButtons(body);
@@ -1382,6 +1857,7 @@
             if (e.type !== 'start' && e.type !== 'complite') return;
 
             apply();
+            scheduleCardFix();
 
             if (e.type === 'complite') {
                 var render = (e.object && e.object.activity && e.object.activity.render)
@@ -1401,6 +1877,53 @@
         try {
             Lampa.Player.listener.follow('start', stopTrailer);
         } catch (e) {}
+
+        // при переходе на другую страницу сразу убираем видео и правки фона
+        try {
+            Lampa.Listener.follow('activity', function (ev) {
+                var comp = ev && (ev.component || (ev.object && ev.object.component));
+                var type = ev && ev.type;
+
+                if (comp && comp !== 'full' && (type === 'start' || type === 'create' || type === 'destroy' || type === 'archive')) {
+                    stopTrailer();
+                    restoreCardFix();
+                }
+            });
+        } catch (err) {}
+
+        // нажатие "Назад": прячем видео мгновенно, ещё до смены страницы
+        document.addEventListener('keydown', function (ev) {
+            var k = ev.keyCode;
+            var back = k === 27 || k === 8 || k === 461 || k === 10009 || k === 4 ||
+                ev.key === 'Escape' || ev.key === 'GoBack' || ev.key === 'BrowserBack';
+
+            if (!back) return;
+
+            var layer = $('#' + LAYER_ID);
+            if (!layer.length) return;
+
+            layer.css('visibility', 'hidden');
+
+            setTimeout(function () {
+                var l = $('#' + LAYER_ID);
+                if (!l.length) return;
+
+                var act = Lampa.Activity.active();
+                if (act && act.component === 'full') l.css('visibility', '');
+                else stopTrailer();
+            }, 300);
+        }, true);
+
+        // страховка: если событие смены страницы не пришло, проверяем сами
+        setInterval(function () {
+            try {
+                var act = Lampa.Activity.active();
+                if (act && act.component === 'full') return;
+
+                if (document.getElementById(LAYER_ID)) stopTrailer();
+                if (cardFix.els.length || cardFix.props.length) restoreCardFix();
+            } catch (err) {}
+        }, 250);
 
         try {
             Lampa.Storage.listener.follow('change', function (e) {
