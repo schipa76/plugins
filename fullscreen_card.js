@@ -43,7 +43,7 @@
 
     function dbg(msg) {
         try {
-            if (!opt('trailer_bg_debug', true)) return;
+            if (!opt('trailer_bg_debug', false)) return;
 
             dbgLog.push(msg);
             clearTimeout(dbgTimer);
@@ -182,6 +182,9 @@
             '.trailer-bg__frame{position:absolute;top:50%;left:50%;width:100vw;height:56.25vw;min-height:100vh;min-width:177.78vh;transform:translate(-50%,-50%);}' +
             '.trailer-bg__frame iframe{width:100%;height:100%;border:0;}' +
             '.trailer-bg__frame video{width:100%;height:100%;object-fit:cover;background:#000;}' +
+            '.trailer-bg video::-webkit-media-controls,.trailer-bg video::-webkit-media-controls-start-playback-button,.trailer-bg video::-webkit-media-controls-overlay-play-button{display:none !important;-webkit-appearance:none;opacity:0;}' +
+            '.fsc-bg-hidden{opacity:0 !important;transition:opacity .6s ease;}' +
+            '.fsc-bg-clear{background-image:none !important;}' +
 
             '</style>'
         );
@@ -516,13 +519,61 @@
             // плавно показываем, когда видео успело стартовать
             setTimeout(function () {
                 layer.addClass('trailer-bg--ready');
+                hideBackdrop();
             }, source === 'rutube' ? 3500 : 2500);
         });
     }
 
     // ---------- Rutube без рекламы: прямой поток в обычном <video> ----------
 
+    // Пока играет трейлер, прячем крупную картинку фона (постер/бэкдроп карточки),
+    // иначе она закрывает видео. Классы элементов заранее неизвестны, поэтому ищем
+    // по размеру: изображение или фон-картинка шириной от трети экрана и высотой от половины.
+    var hiddenBackdrops = [];
+
+    function restoreBackdrop() {
+        try {
+            $(hiddenBackdrops).removeClass('fsc-bg-hidden fsc-bg-clear');
+        } catch (e) {}
+        hiddenBackdrops = [];
+    }
+
+    function hideBackdrop() {
+        try {
+            if (!opt('trailer_bg_hide_backdrop', true)) return;
+
+            restoreBackdrop();
+
+            var w = window.innerWidth || 1280;
+            var h = window.innerHeight || 720;
+            var layerEl = document.getElementById(LAYER_ID);
+
+            $('body').find('img, div, section, span').each(function () {
+                var el = this;
+
+                if (layerEl && (layerEl === el || layerEl.contains(el) || el.contains(layerEl))) return;
+
+                var r = el.getBoundingClientRect();
+                if (r.width < w * 0.35 || r.height < h * 0.5) return;
+
+                if (el.tagName === 'IMG') {
+                    $(el).addClass('fsc-bg-hidden');
+                    hiddenBackdrops.push(el);
+                    return;
+                }
+
+                var bi = window.getComputedStyle(el).backgroundImage;
+                if (bi && bi.indexOf('url(') !== -1) {
+                    $(el).addClass('fsc-bg-clear');
+                    hiddenBackdrops.push(el);
+                }
+            });
+        } catch (e) {}
+    }
+
     function removeLayer() {
+        restoreBackdrop();
+
         var layer = $('#' + LAYER_ID);
         if (!layer.length) return;
 
@@ -562,7 +613,7 @@
         var layer = $(
             '<div id="' + LAYER_ID + '" class="trailer-bg">' +
                 '<div class="trailer-bg__frame">' +
-                    '<video playsinline loop autoplay' + (sound ? '' : ' muted') + '></video>' +
+                    '<video playsinline loop autoplay poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"' + (sound ? '' : ' muted') + '></video>' +
                 '</div>' +
             '</div>'
         );
@@ -591,6 +642,7 @@
             clearTimeout(guard);
             dbg('играет (Rutube, прямой поток)');
             layer.addClass('trailer-bg--ready');
+            hideBackdrop();
         });
 
         // если за 10 секунд ничего не заиграло - считаем, что не вышло
@@ -820,7 +872,16 @@
 
             Lampa.SettingsApi.addParam({
                 component: 'fullscreen_card',
-                param: { name: 'trailer_bg_debug', type: 'trigger', 'default': true },
+                param: { name: 'trailer_bg_hide_backdrop', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Скрывать картинку фона при трейлере',
+                    description: 'Пока играет трейлер, убирается неподвижная картинка фильма поверх видео'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'trailer_bg_debug', type: 'trigger', 'default': false },
                 field: {
                     name: 'Подсказки о запуске трейлера',
                     description: 'Короткие сообщения на экране: что нашлось и почему трейлер не играет'
