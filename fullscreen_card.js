@@ -310,6 +310,94 @@
 
     // ---------- Rutube: поиск трейлера по названию ----------
 
+    // Запрос JSON несколькими способами подряд. Браузер часто блокирует запросы
+    // к чужим сайтам (CORS), поэтому сначала пробуем сетевой модуль самой Lampa
+    // (на Android он ходит в обход этого ограничения), потом обычный fetch.
+    function errText(e) {
+        if (!e) return 'ошибка';
+        if (typeof e === 'string') return e;
+        if (e.message) return e.message;
+        if (e.status !== undefined) return 'HTTP ' + e.status;
+        return String(e);
+    }
+
+    function httpJson(url, cb) {
+        var errors = [];
+        var tries = [];
+
+        var proxy = String(opt('trailer_bg_proxy', '') || '').replace(/^\s+|\s+$/g, '');
+
+        try {
+            if (window.Lampa && Lampa.Reguest) {
+                tries.push({
+                    name: 'native',
+                    run: function (ok, fail) {
+                        var n = new Lampa.Reguest();
+                        if (typeof n.native !== 'function') return fail('нет native');
+                        n.native(url, ok, fail);
+                    }
+                });
+
+                tries.push({
+                    name: 'lampa',
+                    run: function (ok, fail) {
+                        new Lampa.Reguest().silent(url, ok, fail);
+                    }
+                });
+            }
+        } catch (e) {}
+
+        tries.push({
+            name: 'fetch',
+            run: function (ok, fail) {
+                fetch(url).then(function (r) { return r.json(); }).then(ok).catch(fail);
+            }
+        });
+
+        // свой прокси из настроек (необязательно): адрес дописывается перед ссылкой
+        if (proxy) {
+            tries.push({
+                name: 'прокси',
+                run: function (ok, fail) {
+                    fetch(proxy + url).then(function (r) { return r.json(); }).then(ok).catch(fail);
+                }
+            });
+        }
+
+        function next(i) {
+            if (i >= tries.length) return cb(errors.join('; '), null);
+
+            var t = tries[i];
+            var done = false;
+
+            function finish(data, err) {
+                if (done) return;
+                done = true;
+                clearTimeout(guard);
+
+                var json = data;
+                if (!err && typeof data === 'string') {
+                    try { json = JSON.parse(data); } catch (e) { json = null; }
+                }
+
+                if (!err && json && typeof json === 'object') return cb(null, json, t.name);
+
+                errors.push(t.name + ': ' + (err ? errText(err) : 'пустой ответ'));
+                next(i + 1);
+            }
+
+            var guard = setTimeout(function () { finish(null, 'таймаут'); }, 8000);
+
+            try {
+                t.run(function (d) { finish(d); }, function (e) { finish(null, e || 'ошибка'); });
+            } catch (e) {
+                finish(null, e);
+            }
+        }
+
+        next(0);
+    }
+
     // приводим название к простому виду: без регистра, знаков и буквы "ё"
     function norm(s) {
         return String(s || '')
@@ -333,13 +421,17 @@
 
         var names = [norm(titleRu), norm(titleOrig)].filter(function (x) { return x.length > 1; });
 
-        fetch(url)
-            .then(function (r) { return r.json(); })
-            .then(function (json) {
+        httpJson(url, function (err, json, via) {
+            if (err) {
+                dbg('Rutube: поиск не сработал (' + err + ')');
+                return cb(null);
+            }
+
+            (function () {
                 var list = (json && json.results) || [];
                 var best = null;
 
-                dbg('Rutube: результатов ' + list.length);
+                dbg('Rutube: результатов ' + list.length + ' (' + via + ')');
 
                 for (var i = 0; i < list.length; i++) {
                     var it = list[i];
@@ -371,11 +463,8 @@
 
                 var id = best.id || String(best.video_url || '').split('/').filter(Boolean).pop();
                 cb(id || null);
-            })
-            .catch(function (err) {
-                dbg('Rutube: поиск не сработал (' + err + ')');
-                cb(null);
-            });
+            })();
+        });
     }
 
     // ---------- слой с видео ----------
@@ -454,18 +543,17 @@
     }
 
     function rutubeStream(id, cb) {
-        fetch('https://rutube.ru/api/play/options/' + id + '/?no_404=true&referer&pver=v2')
-            .then(function (r) { return r.json(); })
-            .then(function (json) {
-                var b = json && json.video_balancer;
-                var url = (b && (b.m3u8 || b['default'])) || null;
-                if (!url) dbg('Rutube: ссылка на поток не получена');
-                cb(url);
-            })
-            .catch(function (err) {
+        httpJson('https://rutube.ru/api/play/options/' + id + '/?no_404=true&referer&pver=v2', function (err, json) {
+            if (err) {
                 dbg('Rutube: запрос потока не сработал (' + err + ')');
-                cb(null);
-            });
+                return cb(null);
+            }
+
+            var b = json && json.video_balancer;
+            var url = (b && (b.m3u8 || b['default'])) || null;
+            if (!url) dbg('Rutube: ссылка на поток не получена');
+            cb(url);
+        });
     }
 
     function showVideo(url, id, my) {
@@ -736,6 +824,15 @@
                 field: {
                     name: 'Подсказки о запуске трейлера',
                     description: 'Короткие сообщения на экране: что нашлось и почему трейлер не играет'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: { name: 'trailer_bg_proxy', type: 'input', 'default': '', placeholder: 'https://...' },
+                field: {
+                    name: 'Прокси для Rutube (необязательно)',
+                    description: 'Нужен, только если Rutube не открывается из Lampa. Адрес допишется перед ссылкой на Rutube'
                 }
             });
 
