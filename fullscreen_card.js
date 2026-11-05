@@ -188,6 +188,13 @@
             // фон карточки: свою картинку карточки прячем, показываем общий фон Lampa на весь экран
             'body.fsc-card-bg .full-start__background{opacity:0 !important;transition:none !important;}' +
             'body.fsc-card-bg .background{opacity:1 !important;visibility:visible !important;}' +
+
+            // свой слой с картинкой фона: лежит над общим фоном Lampa, поэтому его затемнение не видно
+            '#fsc-backdrop{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .35s ease;}' +
+            '#fsc-backdrop.fsc-backdrop--on{opacity:1;}' +
+            '#fsc-backdrop img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;}' +
+            '.fsc-nofilter{filter:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}' +
+            '.fsc-nocolor{background:none !important;background-color:transparent !important;}' +
             '.fsc-nograd{background-image:none !important;}' +
             '.fsc-nomask{-webkit-mask-image:none !important;mask-image:none !important;}' +
             '.fsc-nobefore::before{background:none !important;background-image:none !important;}' +
@@ -498,6 +505,16 @@
             '&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&disablekb=1&fs=0';
     }
 
+    // Место для слоя трейлера: после своей картинки фона, а если её нет - после общего фона Lampa.
+    // Так видео всегда лежит над картинкой, а интерфейс над видео.
+    function insertLayer(layer) {
+        var anchor = $('#fsc-backdrop');
+        if (!anchor.length) anchor = $('.background').first();
+
+        if (anchor.length) anchor.after(layer);
+        else $('body').prepend(layer);
+    }
+
     function showIframe(source, id) {
         var sound = opt('trailer_bg_sound', false);
 
@@ -510,9 +527,7 @@
         );
 
         // вставляем рядом с фоном Lampa, чтобы интерфейс остался поверх видео
-        var bg = $('.background').first();
-        if (bg.length) bg.after(layer);
-        else $('body').prepend(layer);
+        insertLayer(layer);
 
         var frame = layer.find('iframe');
 
@@ -562,11 +577,13 @@
             var w = window.innerWidth || 1280;
             var h = window.innerHeight || 720;
             var layerEl = document.getElementById(LAYER_ID);
+            var backEl = document.getElementById('fsc-backdrop');
 
             $('body').find('img, div, section, span').each(function () {
                 var el = this;
 
                 if (layerEl && (layerEl === el || layerEl.contains(el) || el.contains(layerEl))) return;
+                if (backEl && (backEl === el || backEl.contains(el) || el.contains(backEl))) return;
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
@@ -595,6 +612,17 @@
     var cardFix = { els: [], props: [], seen: {} };
     var cardFixTimers = [];
 
+    // прозрачность цвета: 'rgba(0, 0, 0, 0.5)' -> 0.5, 'rgb(...)' -> 1, 'transparent' -> 0
+    function alphaOf(c) {
+        if (!c || c === 'transparent') return 0;
+
+        var m = /rgba?\(([^)]+)\)/.exec(c);
+        if (!m) return 0;
+
+        var parts = m[1].split(',');
+        return parts.length > 3 ? parseFloat(parts[3]) : 1;
+    }
+
     function describeEl(el) {
         var raw = (el.className && el.className.baseVal !== undefined) ? el.className.baseVal : el.className;
         var c = String(raw || '').split(/\s+/).filter(function (x) {
@@ -610,7 +638,8 @@
 
         try {
             $('body').removeClass('fsc-card-bg');
-            $(cardFix.els).removeClass('fsc-bd-fix fsc-nograd fsc-nobefore fsc-noafter fsc-nomask');
+            $('#fsc-backdrop').remove();
+            $(cardFix.els).removeClass('fsc-bd-fix fsc-nograd fsc-nobefore fsc-noafter fsc-nomask fsc-nofilter fsc-nocolor');
 
             cardFix.props.forEach(function (p) {
                 if (p.old) p.el.style.setProperty(p.prop, p.old, p.priority || '');
@@ -631,12 +660,14 @@
             var w = window.innerWidth || 1280;
             var h = window.innerHeight || 720;
             var layerEl = document.getElementById(LAYER_ID);
+            var backEl = document.getElementById('fsc-backdrop');
             var touched = [];
 
             $('body').find('img, div, section, span').each(function () {
                 var el = this;
 
                 if (layerEl && (layerEl === el || layerEl.contains(el) || el.contains(layerEl))) return;
+                if (backEl && (backEl === el || backEl.contains(el) || el.contains(backEl))) return;
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
@@ -673,14 +704,40 @@
                 }
 
                 // затемнение часто сделано псевдоэлементами ::before / ::after
+                // (градиентом или полупрозрачным цветом)
                 ['::before', '::after'].forEach(function (ps) {
-                    var pbi = window.getComputedStyle(el, ps).backgroundImage || '';
-                    if (pbi.indexOf('gradient') !== -1) {
+                    var pcs = window.getComputedStyle(el, ps);
+                    var pbi = pcs.backgroundImage || '';
+                    var pa = alphaOf(pcs.backgroundColor);
+                    var has = pcs.content && pcs.content !== 'none' && pcs.content !== 'normal';
+
+                    if (pbi.indexOf('gradient') !== -1 || (has && pa > 0.05)) {
                         $(el).addClass(ps === '::before' ? 'fsc-nobefore' : 'fsc-noafter');
                         cardFix.els.push(el);
                         flags += ps === '::before' ? 'b' : 'a';
                     }
                 });
+
+                // затемнение фильтром (яркость, размытие подложки)
+                var flt = cs.filter || '';
+                var bflt = cs.webkitBackdropFilter || cs.backdropFilter || '';
+                if ((flt && flt !== 'none') || (bflt && bflt !== 'none')) {
+                    $(el).addClass('fsc-nofilter');
+                    cardFix.els.push(el);
+                    flags += 'F';
+                }
+
+                // пустой элемент с полупрозрачным цветом поверх экрана - это и есть затемнение
+                var ca = alphaOf(cs.backgroundColor);
+                if (ca > 0.05 && ca < 1 && el.children.length === 0 && !$.trim(el.textContent || '')) {
+                    $(el).addClass('fsc-nocolor');
+                    cardFix.els.push(el);
+                    flags += 'C';
+                }
+
+                // прозрачность картинки только отмечаем в подсказке: менять её опасно
+                var opv = parseFloat(cs.opacity);
+                if (opv > 0.02 && opv < 0.97) flags += 'O' + opv.toFixed(2);
 
                 // маска, которой картинку растворяют слева
                 var mask = cs.webkitMaskImage || cs.maskImage || '';
@@ -705,6 +762,25 @@
         } catch (e) {}
     }
 
+    // Рисуем картинку фона сами: на весь экран, по центру, без затемнения и фильтров.
+    // Она лежит поверх общего фона Lampa, так что любое затемнение Lampa под ней не видно.
+    function ensureBackdropLayer(src) {
+        var cur = $('#fsc-backdrop');
+        if (cur.length && cur.attr('data-src') === src) return;
+
+        cur.remove();
+
+        var layer = $('<div id="fsc-backdrop"><img alt=""></div>');
+        layer.attr('data-src', src);
+        layer.find('img').attr('src', src);
+
+        var bg = $('.background').first();
+        if (bg.length) bg.after(layer);
+        else $('body').prepend(layer);
+
+        setTimeout(function () { layer.addClass('fsc-backdrop--on'); }, 30);
+    }
+
     // Берём адрес картинки из карточки и ставим её общим фоном Lampa: он на весь экран,
     // по центру и не сдвигается. Заодно один раз выводим в подсказку размеры, чтобы
     // было видно, что именно происходит с фоном.
@@ -717,6 +793,8 @@
 
             var img = $('img.full-start__background').first();
             var src = img.length ? img.attr('src') : '';
+
+            if (src) ensureBackdropLayer(src);
 
             if (src && window.Lampa && Lampa.Background && typeof Lampa.Background.immediately === 'function') {
                 Lampa.Background.immediately(src);
@@ -1024,6 +1102,30 @@
     // ---------- сам видеоплеер ----------
 
     // opts.cors - просить доступ к кадру (нужен для поиска полос), opts.alt - запасной адрес потока
+    // Громкость трейлера в долях единицы. Автоматически выровнять громкость разных трейлеров
+    // нельзя: браузер не даёт обработать звук чужого видео. Поэтому задаём общий уровень.
+    function trailerVolume() {
+        var v = parseFloat(opt('trailer_bg_volume', '0.4'));
+        if (!(v >= 0)) v = 0.4;
+        return Math.max(0, Math.min(1, v));
+    }
+
+    // плавно поднимаем звук, чтобы громкое начало трейлера не било по ушам
+    function fadeInVolume(video, target) {
+        var steps = 20;
+        var i = 0;
+
+        try { video.volume = 0; } catch (e) {}
+
+        var timerId = setInterval(function () {
+            i++;
+
+            try { video.volume = Math.min(target, target * i / steps); } catch (e) {}
+
+            if (i >= steps || !document.body.contains(video)) clearInterval(timerId);
+        }, 100);
+    }
+
     function showVideo(url, id, my, opts) {
         opts = opts || {};
 
@@ -1039,9 +1141,7 @@
             '</div>'
         );
 
-        var bg = $('.background').first();
-        if (bg.length) bg.after(layer);
-        else $('body').prepend(layer);
+        insertLayer(layer);
 
         var video = layer.find('video')[0];
         var failed = false;
@@ -1090,11 +1190,16 @@
         }
 
         video.muted = !sound;
+        if (sound) {
+            // начинаем с нуля, на уровень выходим плавно после старта
+            try { video.volume = 0; } catch (e) {}
+        }
         video.addEventListener('error', fail);
         video.addEventListener('playing', function () {
             clearTimeout(guard);
             dbg('играет (Rutube, прямой поток)');
             layer.addClass('trailer-bg--ready');
+            if (sound && !video.muted) fadeInVolume(video, trailerVolume());
             hideBackdrop();
             if (cors) corsState = true;
             if (zoomMode === 'auto' && cors) startBarWatch(video, 'auto');
@@ -1391,6 +1496,20 @@
                 field: {
                     name: 'Rutube без рекламы',
                     description: 'Играет прямой поток вместо плеера Rutube. Если не получилось, откроется обычный плеер'
+                }
+            });
+
+            Lampa.SettingsApi.addParam({
+                component: 'fullscreen_card',
+                param: {
+                    name: 'trailer_bg_volume',
+                    type: 'select',
+                    values: { '0.15': 'Очень тихо (15%)', '0.25': 'Тихо (25%)', '0.4': 'Средне (40%)', '0.6': 'Громко (60%)', '0.8': 'Очень громко (80%)', '1': 'Максимум (100%)' },
+                    'default': '0.4'
+                },
+                field: {
+                    name: 'Громкость трейлера',
+                    description: 'Общий уровень звука трейлера. Работает, когда включён звук трейлера'
                 }
             });
 
@@ -1974,6 +2093,7 @@
                 if (act && act.component === 'full') return;
 
                 $('body').removeClass('fsc-card-bg');
+                $('#fsc-backdrop').remove();
                 if (document.getElementById(LAYER_ID)) stopTrailer();
                 if (cardFix.els.length || cardFix.props.length) restoreCardFix();
             } catch (err) {}
