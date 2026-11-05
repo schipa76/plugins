@@ -185,7 +185,9 @@
             '.trailer-bg__frame video{width:100%;height:100%;object-fit:cover;background:#000;transform-origin:50% 50%;transition:transform .8s ease;}' +
             '.trailer-bg video::-webkit-media-controls,.trailer-bg video::-webkit-media-controls-start-playback-button,.trailer-bg video::-webkit-media-controls-overlay-play-button{display:none !important;-webkit-appearance:none;opacity:0;}' +
             '.fsc-bg-hidden{opacity:0 !important;transition:opacity .6s ease;}' +
-            '.fsc-bd-fix{transform:none !important;-webkit-mask-image:none !important;mask-image:none !important;left:0 !important;right:0 !important;width:100% !important;margin-left:0 !important;object-fit:cover !important;object-position:50% 50% !important;background-position:50% 50% !important;background-size:cover !important;}' +
+            // фон карточки: свою картинку карточки прячем, показываем общий фон Lampa на весь экран
+            'body.fsc-card-bg .full-start__background{opacity:0 !important;transition:none !important;}' +
+            'body.fsc-card-bg .background{opacity:1 !important;visibility:visible !important;}' +
             '.fsc-nograd{background-image:none !important;}' +
             '.fsc-nomask{-webkit-mask-image:none !important;mask-image:none !important;}' +
             '.fsc-nobefore::before{background:none !important;background-image:none !important;}' +
@@ -607,6 +609,7 @@
         cardFixTimers = [];
 
         try {
+            $('body').removeClass('fsc-card-bg');
             $(cardFix.els).removeClass('fsc-bd-fix fsc-nograd fsc-nobefore fsc-noafter fsc-nomask');
 
             cardFix.props.forEach(function (p) {
@@ -644,12 +647,8 @@
                 var hasGrad = bi.indexOf('gradient') !== -1;
                 var flags = '';
 
-                // сама картинка фона: убираем смещение, маску и сдвиг
-                if (el.tagName === 'IMG' || hasUrl) {
-                    $(el).addClass('fsc-bd-fix');
-                    cardFix.els.push(el);
-                    flags += 'B';
-                }
+                // сама картинка фона (её прячет отдельное правило, тут только для подсказки)
+                if (el.tagName === 'IMG' || hasUrl) flags += 'B';
 
                 // затемнение градиентом в самом элементе
                 if (hasGrad) {
@@ -706,13 +705,52 @@
         } catch (e) {}
     }
 
+    // Берём адрес картинки из карточки и ставим её общим фоном Lampa: он на весь экран,
+    // по центру и не сдвигается. Заодно один раз выводим в подсказку размеры, чтобы
+    // было видно, что именно происходит с фоном.
+    function syncCardBackground() {
+        try {
+            if (!opt('fsc_fix_backdrop', true)) return;
+
+            var act = Lampa.Activity.active();
+            if (!act || act.component !== 'full') return;
+
+            var img = $('img.full-start__background').first();
+            var src = img.length ? img.attr('src') : '';
+
+            if (src && window.Lampa && Lampa.Background && typeof Lampa.Background.immediately === 'function') {
+                Lampa.Background.immediately(src);
+            }
+
+            if (!cardFix.infoShown) {
+                var bgEl = $('.background').first();
+
+                if (bgEl.length && img.length) {
+                    var rb = bgEl[0].getBoundingClientRect();
+                    var ri = img[0].getBoundingClientRect();
+                    var ob = window.getComputedStyle(bgEl[0]).opacity;
+
+                    cardFix.infoShown = true;
+                    dbg('.background: ' + Math.round(rb.width) + '×' + Math.round(rb.height) + ' слева ' + Math.round(rb.left) +
+                        ', прозрачность ' + ob + '; картинка карточки: слева ' + Math.round(ri.left) + ', ширина ' + Math.round(ri.width) +
+                        (src ? '' : ', без адреса'));
+                }
+            }
+        } catch (e) {}
+    }
+
     // проверяем несколько раз: смещение и затемнение появляются не сразу
     function scheduleCardFix() {
         restoreCardFix();
         if (!opt('fsc_fix_backdrop', true)) return;
 
+        $('body').addClass('fsc-card-bg');
+
         [0, 250, 700, 1300, 2200, 3500, 5000].forEach(function (ms) {
-            cardFixTimers.push(setTimeout(fixCardBackdrop, ms));
+            cardFixTimers.push(setTimeout(function () {
+                syncCardBackground();
+                fixCardBackdrop();
+            }, ms));
         });
     }
 
@@ -912,6 +950,13 @@
             (-zoom.dx * 100).toFixed(2) + '%,' + (-zoom.dy * 100).toFixed(2) + '%)';
     }
 
+    // Увеличение по умолчанию, когда кадр прочитать нельзя (Rutube не даёт доступ к картинке):
+    // это закрывает полосы кино 2.39:1. Для фона обрезанные края не страшны.
+    var FALLBACK_ZOOM = 1.34;
+
+    // помним, что доступ к кадру не получился, чтобы не тратить время на повторную попытку
+    var corsState = null;
+
     function startBarWatch(video, mode) {
         if (mode === 'off') return;
 
@@ -984,7 +1029,7 @@
 
         var sound = opt('trailer_bg_sound', false);
         var zoomMode = String(opt('trailer_bg_zoom', 'auto'));
-        var cors = (opts.cors === undefined) ? (zoomMode === 'auto') : opts.cors;
+        var cors = (opts.cors === undefined) ? (zoomMode === 'auto' && corsState !== false) : opts.cors;
 
         var layer = $(
             '<div id="' + LAYER_ID + '" class="trailer-bg">' +
@@ -1004,6 +1049,21 @@
 
         if (cors) video.crossOrigin = 'anonymous';
 
+        // фиксированное увеличение ставим сразу, до начала воспроизведения, без плавной анимации
+        var fixedZoom = 0;
+        if (zoomMode !== 'off') {
+            if (zoomMode !== 'auto') fixedZoom = parseFloat(zoomMode) || 0;
+            else if (!cors) fixedZoom = FALLBACK_ZOOM;
+        }
+
+        if (fixedZoom > 1) {
+            video.style.transition = 'none';
+            applyZoom(video, { z: fixedZoom, dx: 0, dy: 0 });
+            setTimeout(function () { video.style.transition = ''; }, 100);
+
+            if (zoomMode === 'auto') dbg('кадр недоступен, увеличение ×' + fixedZoom + ' по умолчанию');
+        }
+
         function fail() {
             if (failed) return;
             failed = true;
@@ -1014,6 +1074,7 @@
 
             if (cors) {
                 // сервер не разрешил доступ к кадру - играем без поиска полос
+                corsState = false;
                 dbg('без доступа к кадру, пробую без CORS');
                 return showVideo(url, id, my, { cors: false, alt: opts.alt });
             }
@@ -1035,7 +1096,8 @@
             dbg('играет (Rutube, прямой поток)');
             layer.addClass('trailer-bg--ready');
             hideBackdrop();
-            startBarWatch(video, cors ? zoomMode : (zoomMode === 'auto' ? 'off' : zoomMode));
+            if (cors) corsState = true;
+            if (zoomMode === 'auto' && cors) startBarWatch(video, 'auto');
         });
 
         // если за несколько секунд ничего не заиграло - считаем, что не вышло
@@ -1287,7 +1349,7 @@
                 param: {
                     name: 'trailer_bg_zoom',
                     type: 'select',
-                    values: { 'auto': 'Авто (по кадру)', 'off': 'Выключено', '1.2': 'Всегда ×1.2', '1.34': 'Всегда ×1.34 (для кино 2.39:1)' },
+                    values: { 'auto': 'Авто (по кадру, иначе ×1.34)', 'off': 'Выключено', '1.2': 'Всегда ×1.2', '1.34': 'Всегда ×1.34 (для кино 2.39:1)', '1.5': 'Всегда ×1.5' },
                     'default': 'auto'
                 },
                 field: {
@@ -1320,15 +1382,6 @@
                 field: {
                     name: 'Подсказки о запуске трейлера',
                     description: 'Короткие сообщения на экране: что нашлось и почему трейлер не играет'
-                }
-            });
-
-            Lampa.SettingsApi.addParam({
-                component: 'fullscreen_card',
-                param: { name: 'trailer_bg_proxy', type: 'input', 'default': '', placeholder: 'https://...' },
-                field: {
-                    name: 'Прокси для Rutube (необязательно)',
-                    description: 'Нужен, только если Rutube не открывается из Lampa. Адрес допишется перед ссылкой на Rutube'
                 }
             });
 
@@ -1920,6 +1973,7 @@
                 var act = Lampa.Activity.active();
                 if (act && act.component === 'full') return;
 
+                $('body').removeClass('fsc-card-bg');
                 if (document.getElementById(LAYER_ID)) stopTrailer();
                 if (cardFix.els.length || cardFix.props.length) restoreCardFix();
             } catch (err) {}
