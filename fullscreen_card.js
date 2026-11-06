@@ -190,7 +190,7 @@
             'body.fsc-card-bg .background{opacity:1 !important;visibility:visible !important;}' +
 
             // свой слой с картинкой фона: лежит над общим фоном Lampa, поэтому его затемнение не видно
-            '#fsc-backdrop{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;opacity:0;transition:opacity .35s ease;}' +
+            '#fsc-backdrop{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;opacity:1;}' +
             '#fsc-backdrop.fsc-backdrop--on{opacity:1;}' +
             '#fsc-backdrop img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;}' +
             '.fsc-nofilter{filter:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}' +
@@ -764,6 +764,11 @@
 
     // Рисуем картинку фона сами: на весь экран, по центру, без затемнения и фильтров.
     // Она лежит поверх общего фона Lampa, так что любое затемнение Lampa под ней не видно.
+    // конец адреса картинки (имя файла): по нему узнаём ту же картинку при другом размере
+    function imgTail(u) {
+        return String(u || '').split('?')[0].split('/').pop();
+    }
+
     function ensureBackdropLayer(src) {
         var cur = $('#fsc-backdrop');
         if (cur.length && cur.attr('data-src') === src) return;
@@ -777,8 +782,41 @@
         var bg = $('.background').first();
         if (bg.length) bg.after(layer);
         else $('body').prepend(layer);
+    }
 
-        setTimeout(function () { layer.addClass('fsc-backdrop--on'); }, 30);
+    // Адрес картинки фона по данным фильма: так слой можно показать в самый первый момент,
+    // не дожидаясь, пока Lampa нарисует свою картинку (она чуть темнее).
+    function backdropUrl(card) {
+        try {
+            if (!card) return '';
+
+            if (window.Lampa && Lampa.Utils && typeof Lampa.Utils.cardImgBackground === 'function') {
+                var u = Lampa.Utils.cardImgBackground(card);
+                if (u) return u;
+            }
+
+            if (card.backdrop_path && window.Lampa && Lampa.TMDB && typeof Lampa.TMDB.image === 'function') {
+                return Lampa.TMDB.image('t/p/w1280' + card.backdrop_path);
+            }
+        } catch (e) {}
+
+        return '';
+    }
+
+    function quickBackdrop(e) {
+        try {
+            if (!opt('fsc_fix_backdrop', true)) return;
+
+            var card = (e && e.data && e.data.movie) || (e && e.object && (e.object.card || e.object.movie));
+
+            if (!card) {
+                var act = Lampa.Activity.active();
+                if (act && act.component === 'full') card = act.card || (act.object && act.object.card);
+            }
+
+            var src = backdropUrl(card);
+            if (src) ensureBackdropLayer(src);
+        } catch (err) {}
     }
 
     // Берём адрес картинки из карточки и ставим её общим фоном Lampa: он на весь экран,
@@ -794,7 +832,12 @@
             var img = $('img.full-start__background').first();
             var src = img.length ? img.attr('src') : '';
 
-            if (src) ensureBackdropLayer(src);
+            if (src) {
+                var cur = $('#fsc-backdrop');
+
+                // слой уже есть и показывает ту же картинку: не трогаем, чтобы не мигало
+                if (!cur.length || imgTail(cur.attr('data-src')) !== imgTail(src)) ensureBackdropLayer(src);
+            }
 
             if (src && window.Lampa && Lampa.Background && typeof Lampa.Background.immediately === 'function') {
                 Lampa.Background.immediately(src);
@@ -818,18 +861,32 @@
     }
 
     // проверяем несколько раз: смещение и затемнение появляются не сразу
-    function scheduleCardFix() {
-        restoreCardFix();
-        if (!opt('fsc_fix_backdrop', true)) return;
-
-        $('body').addClass('fsc-card-bg');
-
+    function runCardFixTimers() {
         [0, 250, 700, 1300, 2200, 3500, 5000].forEach(function (ms) {
             cardFixTimers.push(setTimeout(function () {
                 syncCardBackground();
                 fixCardBackdrop();
             }, ms));
         });
+    }
+
+    // открытие карточки: сбрасываем прошлые правки и сразу показываем основную картинку
+    function beginCardFix(e) {
+        restoreCardFix();
+        if (!opt('fsc_fix_backdrop', true)) return;
+
+        $('body').addClass('fsc-card-bg');
+        quickBackdrop(e);
+        runCardFixTimers();
+    }
+
+    // карточка загрузилась: ничего не сбрасываем (иначе картинка моргнёт), только дополняем
+    function continueCardFix(e) {
+        if (!opt('fsc_fix_backdrop', true)) return;
+
+        $('body').addClass('fsc-card-bg');
+        if (!$('#fsc-backdrop').length) quickBackdrop(e);
+        runCardFixTimers();
     }
 
     function removeLayer() {
@@ -1102,30 +1159,6 @@
     // ---------- сам видеоплеер ----------
 
     // opts.cors - просить доступ к кадру (нужен для поиска полос), opts.alt - запасной адрес потока
-    // Громкость трейлера в долях единицы. Автоматически выровнять громкость разных трейлеров
-    // нельзя: браузер не даёт обработать звук чужого видео. Поэтому задаём общий уровень.
-    function trailerVolume() {
-        var v = parseFloat(opt('trailer_bg_volume', '0.4'));
-        if (!(v >= 0)) v = 0.4;
-        return Math.max(0, Math.min(1, v));
-    }
-
-    // плавно поднимаем звук, чтобы громкое начало трейлера не било по ушам
-    function fadeInVolume(video, target) {
-        var steps = 20;
-        var i = 0;
-
-        try { video.volume = 0; } catch (e) {}
-
-        var timerId = setInterval(function () {
-            i++;
-
-            try { video.volume = Math.min(target, target * i / steps); } catch (e) {}
-
-            if (i >= steps || !document.body.contains(video)) clearInterval(timerId);
-        }, 100);
-    }
-
     function showVideo(url, id, my, opts) {
         opts = opts || {};
 
@@ -1190,16 +1223,11 @@
         }
 
         video.muted = !sound;
-        if (sound) {
-            // начинаем с нуля, на уровень выходим плавно после старта
-            try { video.volume = 0; } catch (e) {}
-        }
         video.addEventListener('error', fail);
         video.addEventListener('playing', function () {
             clearTimeout(guard);
             dbg('играет (Rutube, прямой поток)');
             layer.addClass('trailer-bg--ready');
-            if (sound && !video.muted) fadeInVolume(video, trailerVolume());
             hideBackdrop();
             if (cors) corsState = true;
             if (zoomMode === 'auto' && cors) startBarWatch(video, 'auto');
@@ -1496,20 +1524,6 @@
                 field: {
                     name: 'Rutube без рекламы',
                     description: 'Играет прямой поток вместо плеера Rutube. Если не получилось, откроется обычный плеер'
-                }
-            });
-
-            Lampa.SettingsApi.addParam({
-                component: 'fullscreen_card',
-                param: {
-                    name: 'trailer_bg_volume',
-                    type: 'select',
-                    values: { '0.15': 'Очень тихо (15%)', '0.25': 'Тихо (25%)', '0.4': 'Средне (40%)', '0.6': 'Громко (60%)', '0.8': 'Очень громко (80%)', '1': 'Максимум (100%)' },
-                    'default': '0.4'
-                },
-                field: {
-                    name: 'Громкость трейлера',
-                    description: 'Общий уровень звука трейлера. Работает, когда включён звук трейлера'
                 }
             });
 
@@ -2029,7 +2043,9 @@
             if (e.type !== 'start' && e.type !== 'complite') return;
 
             apply();
-            scheduleCardFix();
+
+            if (e.type === 'start') beginCardFix(e);
+            else continueCardFix(e);
 
             if (e.type === 'complite') {
                 var render = (e.object && e.object.activity && e.object.activity.render)
