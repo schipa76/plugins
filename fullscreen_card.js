@@ -18,7 +18,39 @@
     var token = 0;
     var ytReachable = null; // кэш проверки YouTube
 
+    // true - вернуть в меню настроек все пункты (как было раньше)
+    var SHOW_ADVANCED = false;
+
+    // Значения пунктов, которые убраны из меню. Они больше не зависят от сохранённых настроек.
+    // При SHOW_ADVANCED = true этот список не используется.
+    var FIXED = {
+        fsc_hide_poster: true,
+        fsc_bottom: true,
+        fsc_layout: true,
+        fsc_orig_title: true,
+        fsc_labels: true,
+        fsc_main_buttons: true,
+        fsc_hide_source: true,
+        fsc_blue_progress: true,
+        fsc_torrent_layout: true,
+        fsc_btn_editor: true,
+        fsc_quick_exit: false,
+        fsc_fix_backdrop: true,
+        fsc_card_year: false,
+        trailer_bg_source: 'auto',
+        trailer_bg_quality: '1080',
+        trailer_bg_zoom: 'auto',
+        trailer_bg_rutube_direct: true,
+        trailer_bg_hide_backdrop: true
+    };
+
     function opt(name, def) {
+        if (!SHOW_ADVANCED) {
+            // цвет цифр оценок включается тем же пунктом, что и логотипы
+            if (name === 'fsc_rate_colors') name = 'fsc_rate_logos';
+            if (FIXED.hasOwnProperty(name)) return FIXED[name];
+        }
+
         try {
             var v = Lampa.Storage.field(name);
             return (v === undefined || v === null || v === '') ? def : v;
@@ -202,7 +234,13 @@
             '.fsc-nobefore::before{background:none !important;background-image:none !important;}' +
             '.fsc-noafter::after{background:none !important;background-image:none !important;}' +
             // лишние кнопки скрываются сразу, ещё до того как их уберёт скрипт
-            'body.fsc-main-btns .full-start-new__buttons .full-start__button:not(.view--online):not(.view--torrent):not(.button--book){display:none !important;}' +
+            'body.fsc-main-btns .full-start__button:not(.view--online):not(.view--torrent):not(.button--book){display:none !important;}' +
+            // пока скрипт не расставил кнопки, блок спрятан (иначе на секунду мелькают лишние);
+            // запасной таймер 1.5 с покажет блок в любом случае
+            'body.fsc-main-btns .full-start-new__buttons:not(.fsc-btn-ready),' +
+            'body.fsc-main-btns .full-start__buttons:not(.fsc-btn-ready),' +
+            'body.fsc-main-btns .buttons--container:not(.fsc-btn-ready){visibility:hidden;animation:fsc-btn-show 0s linear 1.5s forwards;}' +
+            '@keyframes fsc-btn-show{to{visibility:visible;}}' +
             '.fsc-bg-clear{background-image:none !important;}' +
 
             '</style>'
@@ -1343,13 +1381,16 @@
 
     function addSettings() {
         try {
+            var queued = [];
+            var queueParam = function (cfg) { queued.push(cfg); };
+
             Lampa.SettingsApi.addComponent({
                 component: 'fullscreen_card',
                 name: 'Страница фильма',
                 icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 15h18" stroke="currentColor" stroke-width="2"/></svg>'
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_hide_poster', type: 'trigger', 'default': true },
                 field: {
@@ -1358,7 +1399,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_bottom', type: 'trigger', 'default': true },
                 field: {
@@ -1367,7 +1408,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_layout', type: 'trigger', 'default': true },
                 field: {
@@ -1376,7 +1417,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_orig_title', type: 'trigger', 'default': true },
                 field: {
@@ -1385,7 +1426,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_labels', type: 'trigger', 'default': true },
                 field: {
@@ -1394,7 +1435,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_main_buttons', type: 'trigger', 'default': true },
                 field: {
@@ -1403,19 +1444,19 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_hide_source', type: 'trigger', 'default': true },
                 field: { name: 'Скрыть названия источников' }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_blue_progress', type: 'trigger', 'default': true },
                 field: { name: 'Синяя полоска прогресса просмотра' }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_torrent_layout', type: 'trigger', 'default': true },
                 field: {
@@ -1424,16 +1465,16 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_rate_logos', type: 'trigger', 'default': true },
                 field: {
-                    name: 'Логотипы у оценок',
-                    description: 'На странице фильма вместо названий TMDB, IMDb, КП и CUB показываются значки'
+                    name: 'Цветные оценки с логотипами',
+                    description: 'На странице фильма: значки вместо названий источников и цвет цифры по оценке'
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_rate_colors', type: 'trigger', 'default': true },
                 field: {
@@ -1442,7 +1483,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_card_rating', type: 'trigger', 'default': true },
                 field: {
@@ -1451,7 +1492,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_card_kp', type: 'trigger', 'default': true },
                 field: {
@@ -1460,7 +1501,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_card_year', type: 'trigger', 'default': false },
                 field: {
@@ -1469,7 +1510,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_btn_editor', type: 'trigger', 'default': true },
                 field: {
@@ -1478,7 +1519,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_quick_exit', type: 'trigger', 'default': false },
                 field: {
@@ -1487,7 +1528,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'trailer_bg_enable', type: 'trigger', 'default': true },
                 field: {
@@ -1496,7 +1537,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: {
                     name: 'trailer_bg_source',
@@ -1510,7 +1551,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: {
                     name: 'trailer_bg_quality',
@@ -1524,7 +1565,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: {
                     name: 'trailer_bg_zoom',
@@ -1538,7 +1579,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_fix_backdrop', type: 'trigger', 'default': true },
                 field: {
@@ -1547,7 +1588,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'trailer_bg_hide_backdrop', type: 'trigger', 'default': true },
                 field: {
@@ -1556,7 +1597,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'trailer_bg_debug', type: 'trigger', 'default': false },
                 field: {
@@ -1565,7 +1606,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'trailer_bg_rutube_direct', type: 'trigger', 'default': true },
                 field: {
@@ -1574,7 +1615,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'trailer_bg_sound', type: 'trigger', 'default': false },
                 field: {
@@ -1583,7 +1624,7 @@
                 }
             });
 
-            Lampa.SettingsApi.addParam({
+            queueParam({
                 component: 'fullscreen_card',
                 param: {
                     name: 'trailer_bg_delay',
@@ -1595,6 +1636,35 @@
                     name: 'Задержка перед запуском трейлера',
                     description: 'Чтобы не грузить трейлеры при быстром листании'
                 }
+            });
+            queueParam({
+                component: 'fullscreen_card',
+                param: { name: 'fsc_fast_bg', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Быстрая смена фона на главной',
+                    description: 'Фоны соседних постеров загружаются заранее, пауза перед сменой фона короче'
+                }
+            });
+
+            // В меню остаются только нужные пункты и в таком порядке
+            var ORDER = [
+                'trailer_bg_enable',
+                'trailer_bg_sound',
+                'trailer_bg_delay',
+                'fsc_rate_logos',
+                'fsc_card_rating',
+                'fsc_card_kp',
+                'fsc_fast_bg',
+                'trailer_bg_debug'
+            ];
+
+            var list = queued.map(function (cfg, i) {
+                var pos = ORDER.indexOf(cfg.param.name);
+                return { cfg: cfg, key: pos === -1 ? 1000 + i : pos, visible: pos !== -1 };
+            }).sort(function (x, y) { return x.key - y.key; });
+
+            list.forEach(function (it) {
+                if (it.visible || SHOW_ADVANCED) Lampa.SettingsApi.addParam(it.cfg);
             });
         } catch (e) {
             console.log('fullscreen_card: settings error', e);
@@ -1614,12 +1684,19 @@
             if (!box.length) return;
 
             var keep = body.find('.view--online, .view--torrent, .button--book');
-            box.children('.full-start__button').not(keep).remove();
+
+            // лишние кнопки убираем в любом блоке карточки, не только в основном
+            body.find('.full-start__button').not(keep).remove();
 
             ['.view--online', '.view--torrent', '.button--book'].forEach(function (sel) {
                 var b = body.find(sel).first();
                 if (b.length) box.append(b);
             });
+
+            // нужные кнопки на месте: показываем блок
+            if (keep.length) {
+                body.find('.full-start-new__buttons, .full-start__buttons, .buttons--container').addClass('fsc-btn-ready');
+            }
         } catch (e) {}
     }
 
@@ -2572,6 +2649,148 @@
         };
     })();
 
+    // =====================================================================
+    //  ЧАСТЬ 6. Быстрая смена фона на главном экране
+    //  1) заранее скачиваем фоны соседних постеров, чтобы при переключении они были в кэше;
+    //  2) вместо паузы Lampa перед сменой фона ставим короткую, на 40 мс: она нужна только
+    //     для того, чтобы при зажатой стрелке не грузить каждую картинку.
+    //  Работает через общие функции Lampa и выключается переключателем в настройках.
+    // =====================================================================
+
+    var FastBg = (function () {
+        var done = {};       // адреса, которые уже запрашивали
+        var doneCount = 0;
+        var pending = [];    // очередь на загрузку
+        var running = 0;
+        var lastFocus = null;
+        var changeTimer = null;
+        var started = false;
+
+        var PARALLEL = 2;    // сколько картинок качаем одновременно
+        var MAX_REMEMBER = 200;
+
+        function pump() {
+            while (running < PARALLEL && pending.length) {
+                var url = pending.shift();
+
+                if (done[url]) continue;
+
+                done[url] = 1;
+                doneCount++;
+
+                // чтобы список не рос бесконечно
+                if (doneCount > MAX_REMEMBER) {
+                    done = {};
+                    doneCount = 0;
+                }
+
+                running++;
+
+                var img = new Image();
+                img.onload = img.onerror = function () {
+                    running--;
+                    pump();
+                };
+                img.src = url;
+            }
+        }
+
+        function cardData(el) {
+            return el.card_data || $(el).data('card') || null;
+        }
+
+        // Постеры одного ряда: ищем ближайший блок, где лежит несколько карточек
+        function rowCards(cur) {
+            var node = cur.parentNode;
+
+            for (var level = 0; node && level < 3; level++, node = node.parentNode) {
+                var list = [];
+
+                for (var i = 0; i < node.children.length; i++) {
+                    var ch = node.children[i];
+                    if (ch.classList && ch.classList.contains('card')) list.push(ch);
+                }
+
+                if (list.length > 1 && list.indexOf(cur) !== -1) return list;
+            }
+
+            return [];
+        }
+
+        // Ближайшие постеры: сначала следующие вперёд, потом назад
+        function neighbors(cur) {
+            var list = rowCards(cur);
+            var idx = list.indexOf(cur);
+            if (idx === -1) return [];
+
+            var out = [];
+
+            [1, 2, -1, 3, -2, 4, 5, -3].forEach(function (d) {
+                var c = list[idx + d];
+                if (c) out.push(c);
+            });
+
+            return out;
+        }
+
+        function onFocusChange() {
+            var cur = document.querySelector('.card.focus');
+
+            if (!cur || cur === lastFocus) return;
+            lastFocus = cur;
+
+            if (!opt('fsc_fast_bg', true)) return;
+
+            // старые задачи уже не нужны: фокус ушёл дальше
+            pending = [];
+
+            neighbors(cur).forEach(function (c) {
+                var url = backdropUrl(cardData(c));
+                if (url && !done[url] && pending.indexOf(url) === -1) pending.push(url);
+            });
+
+            pump();
+        }
+
+        // Короткая пауза вместо длинной
+        function installFastChange() {
+            try {
+                var bg = window.Lampa && Lampa.Background;
+
+                if (!bg || bg._fsc_fast || typeof bg.change !== 'function' || typeof bg.immediately !== 'function') return;
+
+                var original = bg.change;
+
+                bg.change = function (url) {
+                    // пустой адрес и выключенный режим оставляем как в Lampa
+                    if (!url || !opt('fsc_fast_bg', true)) return original.apply(this, arguments);
+
+                    clearTimeout(changeTimer);
+                    changeTimer = setTimeout(function () {
+                        bg.immediately(url);
+                    }, 40);
+                };
+
+                bg._fsc_fast = true;
+            } catch (e) {}
+        }
+
+        function start() {
+            if (started) return;
+            started = true;
+
+            installFastChange();
+            setInterval(onFocusChange, 250);
+        }
+
+        return {
+            start: start,
+            focusChanged: onFocusChange,
+            install: installFastChange,
+            neighbors: neighbors
+        };
+    })();
+
     function start() {
         addStyles();
         installQuickExit();
@@ -2582,6 +2801,12 @@
             Ratings.start();
         } catch (err) {
             console.log('fullscreen_card: ratings error', err);
+        }
+
+        try {
+            FastBg.start();
+        } catch (err) {
+            console.log('fullscreen_card: fast background error', err);
         }
 
         Lampa.Listener.follow('full', function (e) {
