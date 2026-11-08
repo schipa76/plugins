@@ -227,6 +227,11 @@
             '#fsc-backdrop{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;opacity:1;}' +
             '#fsc-backdrop.fsc-backdrop--on{opacity:1;}' +
             '#fsc-backdrop img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;}' +
+
+            // свой фон списков (главная и каталоги): две картинки, меняются мгновенно, без наложения
+            '#fsc-mainbg{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;background:#000;}' +
+            '#fsc-mainbg img{position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;opacity:0;}' +
+            '#fsc-mainbg .fsc-mainbg__dim{position:absolute;top:0;left:0;width:100%;height:100%;background:#000;opacity:0;}' +
             '.fsc-nofilter{filter:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}' +
             '.fsc-nocolor{background:none !important;background-color:transparent !important;}' +
             '.fsc-nograd{background-image:none !important;}' +
@@ -549,6 +554,7 @@
     // Так видео всегда лежит над картинкой, а интерфейс над видео.
     function insertLayer(layer) {
         var anchor = $('#fsc-backdrop');
+        if (!anchor.length) anchor = $('#fsc-mainbg');
         if (!anchor.length) anchor = $('.background').first();
 
         if (anchor.length) anchor.after(layer);
@@ -618,12 +624,14 @@
             var h = window.innerHeight || 720;
             var layerEl = document.getElementById(LAYER_ID);
             var backEl = document.getElementById('fsc-backdrop');
+            var mainEl = document.getElementById('fsc-mainbg');
 
             $('body').find('img, div, section, span').each(function () {
                 var el = this;
 
                 if (layerEl && (layerEl === el || layerEl.contains(el) || el.contains(layerEl))) return;
                 if (backEl && (backEl === el || backEl.contains(el) || el.contains(backEl))) return;
+                if (mainEl && (mainEl === el || mainEl.contains(el) || el.contains(mainEl))) return;
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
@@ -701,6 +709,7 @@
             var h = window.innerHeight || 720;
             var layerEl = document.getElementById(LAYER_ID);
             var backEl = document.getElementById('fsc-backdrop');
+            var mainEl = document.getElementById('fsc-mainbg');
             var touched = [];
 
             $('body').find('img, div, section, span').each(function () {
@@ -708,6 +717,7 @@
 
                 if (layerEl && (layerEl === el || layerEl.contains(el) || el.contains(layerEl))) return;
                 if (backEl && (backEl === el || backEl.contains(el) || el.contains(backEl))) return;
+                if (mainEl && (mainEl === el || mainEl.contains(el) || el.contains(mainEl))) return;
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
@@ -819,7 +829,10 @@
         layer.attr('data-src', src);
         layer.find('img').attr('src', src);
 
-        var bg = $('.background').first();
+        // картинка карточки должна лежать над фоном списков, а не под ним
+        var bg = $('#fsc-mainbg');
+        if (!bg.length) bg = $('.background').first();
+
         if (bg.length) bg.after(layer);
         else $('body').prepend(layer);
     }
@@ -1639,10 +1652,24 @@
             });
             queueParam({
                 component: 'fullscreen_card',
+                param: {
+                    name: 'fsc_bg_bright',
+                    type: 'select',
+                    values: { '0.6': 'Темнее', '0.75': 'Средняя', '0.9': 'Светлая', '1': 'Самая светлая' },
+                    'default': '0.9'
+                },
+                field: {
+                    name: 'Яркость фона',
+                    description: 'Яркость картинки на заднем плане главного экрана и списков'
+                }
+            });
+
+            queueParam({
+                component: 'fullscreen_card',
                 param: { name: 'fsc_fast_bg', type: 'trigger', 'default': true },
                 field: {
                     name: 'Быстрая смена фона на главной',
-                    description: 'Фоны соседних постеров загружаются заранее, пауза перед сменой фона короче'
+                    description: 'Фон меняется сразу и без наложения картинок, фоны соседних постеров грузятся заранее'
                 }
             });
 
@@ -1655,6 +1682,7 @@
                 'fsc_card_rating',
                 'fsc_card_kp',
                 'fsc_fast_bg',
+                'fsc_bg_bright',
                 'trailer_bg_debug'
             ];
 
@@ -2652,9 +2680,7 @@
     // =====================================================================
     //  ЧАСТЬ 6. Быстрая смена фона на главном экране
     //  1) заранее скачиваем фоны соседних постеров, чтобы при переключении они были в кэше;
-    //  2) вместо паузы Lampa перед сменой фона ставим короткую, на 40 мс: она нужна только
-    //     для того, чтобы при зажатой стрелке не грузить каждую картинку.
-    //  Работает через общие функции Lampa и выключается переключателем в настройках.
+    //  Смену самого фона делает модуль MainBg ниже.
     // =====================================================================
 
     var FastBg = (function () {
@@ -2752,42 +2778,186 @@
             pump();
         }
 
-        // Короткая пауза вместо длинной
-        function installFastChange() {
-            try {
-                var bg = window.Lampa && Lampa.Background;
-
-                if (!bg || bg._fsc_fast || typeof bg.change !== 'function' || typeof bg.immediately !== 'function') return;
-
-                var original = bg.change;
-
-                bg.change = function (url) {
-                    // пустой адрес и выключенный режим оставляем как в Lampa
-                    if (!url || !opt('fsc_fast_bg', true)) return original.apply(this, arguments);
-
-                    clearTimeout(changeTimer);
-                    changeTimer = setTimeout(function () {
-                        bg.immediately(url);
-                    }, 40);
-                };
-
-                bg._fsc_fast = true;
-            } catch (e) {}
-        }
-
         function start() {
             if (started) return;
             started = true;
 
-            installFastChange();
             setInterval(onFocusChange, 250);
         }
 
         return {
             start: start,
             focusChanged: onFocusChange,
-            install: installFastChange,
             neighbors: neighbors
+        };
+    })();
+
+    // =====================================================================
+    //  ЧАСТЬ 7. Свой фон списков: мгновенная смена без наложения и настраиваемая яркость
+    //  Lampa меняет фон плавным переходом: новая картинка проявляется поверх старой, и на секунду
+    //  видны обе. Здесь фон рисуем сами: две картинки, новая показывается только когда полностью
+    //  загрузилась, и сразу целиком. Яркость задаётся настройкой. Короткая пауза 40 мс нужна только
+    //  для того, чтобы при зажатой стрелке не грузить каждую картинку.
+    // =====================================================================
+
+    var MainBg = (function () {
+        var ID = 'fsc-mainbg';
+        var imgs = [];
+        var dim = null;
+        var front = 0;
+        var current = '';
+        var token = 0;
+        var timer = null;
+        var started = false;
+
+        // яркость фона: 1 - как есть, меньше - темнее
+        function brightness() {
+            var v = parseFloat(opt('fsc_bg_bright', '0.9'));
+            if (!(v > 0)) v = 0.9;
+            return Math.min(1, Math.max(0.3, v));
+        }
+
+        function ensure() {
+            var el = document.getElementById(ID);
+
+            if (!el) {
+                el = document.createElement('div');
+                el.id = ID;
+
+                var a = document.createElement('img');
+                var b = document.createElement('img');
+                a.alt = '';
+                b.alt = '';
+
+                var d = document.createElement('div');
+                d.className = 'fsc-mainbg__dim';
+
+                el.appendChild(a);
+                el.appendChild(b);
+                el.appendChild(d);
+
+                // пока нет готовой картинки, слой скрыт: иначе чёрный слой закрыл бы родной фон Lampa
+                el.style.display = 'none';
+
+                // сразу над общим фоном Lampa и под всем остальным
+                var bg = document.querySelector('.background');
+                if (bg && bg.parentNode) bg.parentNode.insertBefore(el, bg.nextSibling);
+                else document.body.insertBefore(el, document.body.firstChild);
+
+                front = 0;
+                current = '';
+            }
+
+            imgs = [el.children[0], el.children[1]];
+            dim = el.children[2];
+            dim.style.opacity = String(1 - brightness());
+
+            return el;
+        }
+
+        function hide() {
+            token++;
+            current = '';
+
+            var el = document.getElementById(ID);
+            if (el) el.style.display = 'none';
+        }
+
+        function show(url) {
+            if (!url) return hide();
+
+            if (url === current) {
+                var cur = document.getElementById(ID);
+
+                if (cur) {
+                    cur.style.display = '';
+                    ensure();
+                }
+
+                return;
+            }
+
+            var el = ensure();
+            var my = ++token;
+            var back = imgs[1 - front];
+
+            // грузим отдельным объектом: видимые картинки не трогаем, пока новая не готова
+            var loader = new Image();
+
+            loader.onload = function () {
+                if (my !== token) return; // уже просят другую картинку
+
+                back.src = url;
+
+                var go = function () {
+                    if (my !== token) return;
+
+                    // новая картинка включается целиком, старая выключается: наложения нет
+                    back.style.opacity = '1';
+                    imgs[front].style.opacity = '0';
+
+                    front = 1 - front;
+                    current = url;
+                    el.style.display = '';
+                };
+
+                if (typeof back.decode === 'function') back.decode().then(go, go);
+                else go();
+            };
+
+            loader.onerror = function () {};
+            loader.src = url;
+        }
+
+        function install() {
+            try {
+                var bg = window.Lampa && Lampa.Background;
+
+                if (!bg || bg._fsc_main || typeof bg.change !== 'function' || typeof bg.immediately !== 'function') return;
+
+                var origChange = bg.change;
+                var origImmediately = bg.immediately;
+
+                bg.change = function (url) {
+                    // выключено или фон убирают: работает как в Lampa
+                    if (!url || !opt('fsc_fast_bg', true)) {
+                        hide();
+                        return origChange.apply(this, arguments);
+                    }
+
+                    clearTimeout(timer);
+                    timer = setTimeout(function () { show(url); }, 40);
+                };
+
+                bg.immediately = function (url) {
+                    if (!url || !opt('fsc_fast_bg', true)) {
+                        hide();
+                        return origImmediately.apply(this, arguments);
+                    }
+
+                    clearTimeout(timer);
+                    show(url);
+
+                    // родной фон Lampa тоже обновляем, чтобы её состояние не расходилось с нашим
+                    return origImmediately.apply(this, arguments);
+                };
+
+                bg._fsc_main = true;
+            } catch (e) {}
+        }
+
+        function start() {
+            if (started) return;
+            started = true;
+            install();
+        }
+
+        return {
+            start: start,
+            install: install,
+            show: show,
+            hide: hide,
+            brightness: brightness
         };
     })();
 
@@ -2805,6 +2975,7 @@
 
         try {
             FastBg.start();
+            MainBg.start();
         } catch (err) {
             console.log('fullscreen_card: fast background error', err);
         }
