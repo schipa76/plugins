@@ -41,7 +41,8 @@
         trailer_bg_quality: '1080',
         trailer_bg_zoom: 'auto',
         trailer_bg_rutube_direct: true,
-        trailer_bg_hide_backdrop: true
+        trailer_bg_hide_backdrop: true,
+        trailer_bg_debug: false
     };
 
     function opt(name, def) {
@@ -105,6 +106,10 @@
             .toggleClass('fsc-nosource', !!opt('fsc_hide_source', true))
             .toggleClass('fsc-blue', !!opt('fsc_blue_progress', true))
             .toggleClass('fsc-torrent', !!opt('fsc_torrent_layout', true));
+
+        try {
+            Ring.apply();
+        } catch (e) {}
     }
 
     // помечаем блок с годом и страной ("2026, Великобритания | США"),
@@ -234,6 +239,17 @@
             '#fsc-mainbg .fsc-mainbg__dim{position:absolute;top:0;left:0;width:100%;height:100%;background:#000;opacity:0;}' +
             '.fsc-nofilter{filter:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}' +
             '.fsc-nocolor{background:none !important;background-color:transparent !important;}' +
+
+            // цвет рамки активного торрента, файла и серии (цвет задаётся настройкой)
+            'body.fsc-ring .torrent-item.focus,body.fsc-ring .torrent-item.focus::before,body.fsc-ring .torrent-item.focus::after,' +
+            'body.fsc-ring .torrent-file.focus,body.fsc-ring .torrent-file.focus::before,body.fsc-ring .torrent-file.focus::after,' +
+            'body.fsc-ring .torrent-serial.focus,body.fsc-ring .torrent-serial.focus::before,body.fsc-ring .torrent-serial.focus::after{' +
+            'border-color:var(--fsc-ring) !important;outline-color:var(--fsc-ring) !important;}' +
+            '.fsc-ring-b::before{box-shadow:var(--fsc-ring-b) !important;}' +
+            '.fsc-ring-a::after{box-shadow:var(--fsc-ring-a) !important;}' +
+
+            // вкладка Shots в настройках Lampa скрыта
+            '.settings-folder[data-component="shots"],.settings-folder[data-component="cub_shots"]{display:none !important;}' +
             '.fsc-nograd{background-image:none !important;}' +
             '.fsc-nomask{-webkit-mask-image:none !important;mask-image:none !important;}' +
             '.fsc-nobefore::before{background:none !important;background-image:none !important;}' +
@@ -478,6 +494,44 @@
             .replace(/^ | $/g, '');
     }
 
+    // Время добавления ролика на Rutube (0, если даты нет в ответе)
+    function tsOf(it) {
+        var raw = (it && (it.publication_ts || it.created_ts || it.last_update_ts)) || '';
+        var t = Date.parse(String(raw).replace(' ', 'T'));
+        return isNaN(t) ? 0 : t;
+    }
+
+    // Из подходящих роликов выбираем самый новый: у свежего ролика выше шанс на хорошее качество.
+    // Если в названии есть год фильма, сначала берём ролики с этим годом, чтобы не взять трейлер
+    // другого фильма с таким же названием. Если дат нет, остаётся первый по порядку Rutube.
+    function pickRutube(cands, year) {
+        if (!cands.length) return null;
+        if (!opt('trailer_bg_newest', true)) return cands[0];
+
+        var pool = cands;
+
+        if (year) {
+            var withYear = cands.filter(function (it) {
+                return norm(it.title).indexOf(year) !== -1;
+            });
+            if (withYear.length) pool = withYear;
+        }
+
+        var best = pool[0];
+        var bestTs = tsOf(best);
+
+        for (var i = 1; i < pool.length; i++) {
+            var ts = tsOf(pool[i]);
+
+            if (ts > bestTs) {
+                best = pool[i];
+                bestTs = ts;
+            }
+        }
+
+        return best;
+    }
+
     function loadRutube(card, cb) {
         var titleRu = card.title || card.name || '';
         var titleOrig = card.original_title || card.original_name || '';
@@ -500,6 +554,7 @@
             (function () {
                 var list = (json && json.results) || [];
                 var best = null;
+                var cands = [];
 
                 dbg('Rutube: результатов ' + list.length + ' (' + via + ')');
 
@@ -514,11 +569,10 @@
                     // если длительность не пришла, не отбрасываем ролик
                     var okLen = dur === 0 || (dur >= 20 && dur <= 360);
 
-                    if (isTrailer && hasTitle && okLen) {
-                        best = it;
-                        break;
-                    }
+                    if (isTrailer && hasTitle && okLen) cands.push(it);
                 }
+
+                best = pickRutube(cands, year);
 
                 if (!best) {
                     // показываем, что именно нашлось, чтобы понять причину
@@ -1403,6 +1457,12 @@
                 icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 15h18" stroke="currentColor" stroke-width="2"/></svg>'
             });
 
+            Lampa.SettingsApi.addComponent({
+                component: 'fsc_trailers',
+                name: 'Трейлеры',
+                icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>'
+            });
+
             queueParam({
                 component: 'fullscreen_card',
                 param: { name: 'fsc_hide_poster', type: 'trigger', 'default': true },
@@ -1673,21 +1733,63 @@
                 }
             });
 
-            // В меню остаются только нужные пункты и в таком порядке
-            var ORDER = [
-                'trailer_bg_enable',
-                'trailer_bg_sound',
-                'trailer_bg_delay',
+            queueParam({
+                component: 'fullscreen_card',
+                param: {
+                    name: 'fsc_ring_color',
+                    type: 'select',
+                    values: {
+                        'white': 'Белый',
+                        'green': 'Зелёный',
+                        'yellow': 'Жёлтый',
+                        'orange': 'Оранжевый',
+                        'red': 'Красный',
+                        'blue': 'Голубой',
+                        'orig': 'Как в Lampa'
+                    },
+                    'default': 'white'
+                },
+                field: {
+                    name: 'Цвет рамки выбранного торрента',
+                    description: 'Рамка вокруг активного торрента, файла и серии в списках торрентов'
+                }
+            });
+
+            queueParam({
+                component: 'fsc_trailers',
+                param: { name: 'trailer_bg_newest', type: 'trigger', 'default': true },
+                field: {
+                    name: 'Самый новый трейлер',
+                    description: 'Если на Rutube несколько трейлеров к фильму, берётся добавленный последним: у него обычно лучше качество'
+                }
+            });
+
+            // В меню остаются только нужные пункты: у каждой вкладки свой список и порядок
+            var ORDER_MAIN = [
                 'fsc_rate_logos',
                 'fsc_card_rating',
                 'fsc_card_kp',
                 'fsc_fast_bg',
                 'fsc_bg_bright',
-                'trailer_bg_debug'
+                'fsc_ring_color'
             ];
 
+            var ORDER_TRAILERS = [
+                'trailer_bg_enable',
+                'trailer_bg_sound',
+                'trailer_bg_delay',
+                'trailer_bg_newest'
+            ];
+
+            // все пункты про трейлеры (в том числе скрытые в обычном режиме) живут во вкладке "Трейлеры"
             var list = queued.map(function (cfg, i) {
-                var pos = ORDER.indexOf(cfg.param.name);
+                var name = cfg.param.name;
+                var isTrailer = name.indexOf('trailer_bg_') === 0;
+                var order = isTrailer ? ORDER_TRAILERS : ORDER_MAIN;
+                var pos = order.indexOf(name);
+
+                cfg.component = isTrailer ? 'fsc_trailers' : 'fullscreen_card';
+
                 return { cfg: cfg, key: pos === -1 ? 1000 + i : pos, visible: pos !== -1 };
             }).sort(function (x, y) { return x.key - y.key; });
 
@@ -2961,6 +3063,187 @@
         };
     })();
 
+    // =====================================================================
+    //  ЧАСТЬ 8. Цвет рамки активного торрента и файла
+    //  Рамка может быть нарисована границей, обводкой или тенью, и заранее неизвестно, чем именно.
+    //  Границу и обводку перекрашивает стиль выше, а если рамка сделана тенью, тень
+    //  перекрашивается здесь на время, пока элемент в фокусе (потом возвращается как было).
+    // =====================================================================
+
+    var Ring = (function () {
+        var COLORS = {
+            white: '#ffffff',
+            green: '#4cd964',
+            yellow: '#ffd54a',
+            orange: '#ff9f43',
+            red: '#ff5252',
+            blue: '#4fc3f7'
+        };
+
+        var SEL = '.torrent-item.focus, .torrent-file.focus, .torrent-serial.focus';
+        var lastEl = null;
+        var timers = [];
+        var started = false;
+
+        // выбранный цвет; пустая строка - "как в Lampa", ничего не меняем
+        function chosen() {
+            return COLORS[String(opt('fsc_ring_color', 'white'))] || '';
+        }
+
+        function rgbOf(hex) {
+            return [parseInt(hex.substr(1, 2), 16), parseInt(hex.substr(3, 2), 16), parseInt(hex.substr(5, 2), 16)];
+        }
+
+        // В тени меняем только цветные части: тёмная тень для объёма остаётся как была
+        function recolor(shadow, hex) {
+            var rgb = rgbOf(hex);
+
+            return String(shadow).replace(/rgba?\(([^)]*)\)/g, function (m, inner) {
+                var p = inner.split(',').map(function (x) { return parseFloat(x); });
+
+                if (Math.max(p[0], p[1], p[2]) < 60) return m;
+
+                var a = (p.length > 3 && !isNaN(p[3])) ? p[3] : 1;
+                return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + a + ')';
+            });
+        }
+
+        function reset(el) {
+            try {
+                el.style.removeProperty('box-shadow');
+                el.style.removeProperty('--fsc-ring-a');
+                el.style.removeProperty('--fsc-ring-b');
+                el.classList.remove('fsc-ring-a');
+                el.classList.remove('fsc-ring-b');
+            } catch (e) {}
+        }
+
+        function paint(el) {
+            var hex = chosen();
+            if (!hex) return;
+
+            try {
+                var sh = window.getComputedStyle(el).boxShadow;
+
+                if (sh && sh !== 'none' && /rgba?\(/.test(sh)) {
+                    var r = recolor(sh, hex);
+                    if (r !== sh) el.style.setProperty('box-shadow', r, 'important');
+                }
+
+                [['::before', 'b'], ['::after', 'a']].forEach(function (x) {
+                    var psh = window.getComputedStyle(el, x[0]).boxShadow;
+
+                    if (psh && psh !== 'none' && /rgba?\(/.test(psh)) {
+                        var pr = recolor(psh, hex);
+
+                        if (pr !== psh) {
+                            el.style.setProperty('--fsc-ring-' + x[1], pr);
+                            el.classList.add('fsc-ring-' + x[1]);
+                        }
+                    }
+                });
+            } catch (e) {}
+        }
+
+        // цвет рамки как переменная на body: по ней работает стиль
+        function apply() {
+            var hex = chosen();
+            var b = document.body;
+            if (!b || !b.style) return;
+
+            if (hex) {
+                b.style.setProperty('--fsc-ring', hex);
+                b.classList.add('fsc-ring');
+            } else {
+                b.style.removeProperty('--fsc-ring');
+                b.classList.remove('fsc-ring');
+            }
+        }
+
+        function tick() {
+            var cur = document.querySelector(SEL);
+            if (cur === lastEl) return;
+
+            timers.forEach(clearTimeout);
+            timers = [];
+
+            if (lastEl) reset(lastEl);
+            lastEl = cur;
+
+            if (!cur || !chosen()) return;
+
+            // рамка может появляться с анимацией, поэтому проверяем несколько раз
+            [0, 150, 400].forEach(function (ms) {
+                timers.push(setTimeout(function () {
+                    if (lastEl === cur) paint(cur);
+                }, ms));
+            });
+        }
+
+        function start() {
+            if (started) return;
+            started = true;
+
+            apply();
+            setInterval(tick, 200);
+        }
+
+        return { start: start, apply: apply, recolor: recolor, chosen: chosen, tick: tick, paint: paint, reset: reset };
+    })();
+
+    // =====================================================================
+    //  ЧАСТЬ 9. Убираем вкладку Shots из настроек Lampa
+    // =====================================================================
+
+    var SettingsClean = (function () {
+        var started = false;
+        var timer = null;
+
+        function clean() {
+            try {
+                var folders = document.querySelectorAll('.settings-folder');
+
+                for (var i = 0; i < folders.length; i++) {
+                    var f = folders[i];
+                    var comp = String(f.getAttribute('data-component') || '');
+                    var nameEl = f.querySelector('.settings-folder__name');
+                    var name = String((nameEl ? nameEl.textContent : f.textContent) || '').replace(/^\s+|\s+$/g, '');
+
+                    var isShots = /shots/i.test(comp) || (/\bshots\b/i.test(name) && name.length < 40);
+
+                    if (isShots && f.parentNode) f.parentNode.removeChild(f);
+                }
+            } catch (e) {}
+        }
+
+        function later() {
+            clearTimeout(timer);
+            timer = setTimeout(clean, 100);
+        }
+
+        function start() {
+            if (started) return;
+            started = true;
+
+            // сразу после открытия настроек, пока Lampa не собрала список для пульта
+            try {
+                if (Lampa.Settings && Lampa.Settings.listener) {
+                    Lampa.Settings.listener.follow('open', function () {
+                        clean();
+                        setTimeout(clean, 0);
+                    });
+                }
+            } catch (e) {}
+
+            // запасной путь, если события нет
+            if (window.MutationObserver) {
+                new MutationObserver(later).observe(document.body, { childList: true, subtree: true });
+            }
+        }
+
+        return { start: start, clean: clean };
+    })();
+
     function start() {
         addStyles();
         installQuickExit();
@@ -2978,6 +3261,18 @@
             MainBg.start();
         } catch (err) {
             console.log('fullscreen_card: fast background error', err);
+        }
+
+        try {
+            Ring.start();
+        } catch (err) {
+            console.log('fullscreen_card: ring error', err);
+        }
+
+        try {
+            SettingsClean.start();
+        } catch (err) {
+            console.log('fullscreen_card: settings cleanup error', err);
         }
 
         Lampa.Listener.follow('full', function (e) {
