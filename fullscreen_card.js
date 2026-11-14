@@ -6,7 +6,7 @@
     //  - контент внизу экрана, фон на весь экран, без затемнения;
     //  - порядок: название -> слоган -> год и страна -> время и жанр -> кнопки,
     //    рейтинги, возрастной ценз и статус - справа внизу;
-    //  - трейлер фоном (YouTube или Rutube). Если трейлера нет, остаётся обычный фон.
+    //  - трейлер фоном (только Rutube). Если трейлера нет, остаётся обычный фон.
     // Настройки: Настройки -> "Страница фильма".
 
     if (window.fullscreen_card_plugin) return;
@@ -16,7 +16,6 @@
     var timer = null;
     var watcher = null;
     var token = 0;
-    var ytReachable = null; // кэш проверки YouTube
 
     // true - вернуть в меню настроек все пункты (как было раньше)
     var SHOW_ADVANCED = false;
@@ -37,7 +36,7 @@
         fsc_quick_exit: false,
         fsc_fix_backdrop: true,
         fsc_card_year: false,
-        trailer_bg_source: 'auto',
+        trailer_bg_source: 'rutube',
         trailer_bg_quality: '1080',
         trailer_bg_zoom: 'auto',
         trailer_bg_rutube_direct: true,
@@ -240,13 +239,12 @@
             '.fsc-nofilter{filter:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}' +
             '.fsc-nocolor{background:none !important;background-color:transparent !important;}' +
 
-            // цвет рамки активного торрента, файла и серии (цвет задаётся настройкой)
-            'body.fsc-ring .torrent-item.focus,body.fsc-ring .torrent-item.focus::before,body.fsc-ring .torrent-item.focus::after,' +
-            'body.fsc-ring .torrent-file.focus,body.fsc-ring .torrent-file.focus::before,body.fsc-ring .torrent-file.focus::after,' +
-            'body.fsc-ring .torrent-serial.focus,body.fsc-ring .torrent-serial.focus::before,body.fsc-ring .torrent-serial.focus::after{' +
-            'border-color:var(--fsc-ring) !important;outline-color:var(--fsc-ring) !important;}' +
+            // рамка активного торрента, файла и серии: сами правила собирает модуль Ring (<style id="fsc-ring-style">)
             '.fsc-ring-b::before{box-shadow:var(--fsc-ring-b) !important;}' +
             '.fsc-ring-a::after{box-shadow:var(--fsc-ring-a) !important;}' +
+
+            // у карточек в списках своя плашка рейтинга: родную плашку Lampa под ней не показываем
+            '.fsc-has-rate .card__vote{display:none !important;}' +
 
             // вкладка Shots в настройках Lampa скрыта
             '.settings-folder[data-component="shots"],.settings-folder[data-component="cub_shots"]{display:none !important;}' +
@@ -272,123 +270,6 @@
     //  ЧАСТЬ 2. Трейлер на фоне
     // =====================================================================
 
-    // ---------- проверка доступности YouTube ----------
-
-    function checkYouTube(cb) {
-        if (ytReachable !== null) return cb(ytReachable);
-
-        var done = false;
-        var img = new Image();
-
-        function finish(v) {
-            if (done) return;
-            done = true;
-            clearTimeout(t);
-            ytReachable = v;
-            cb(v);
-        }
-
-        var t = setTimeout(function () { finish(false); }, 3500);
-
-        // YouTube считается доступным, только если открываются оба адреса:
-        // картинки (i.ytimg.com) и сам youtube.com, с которого грузится плеер
-        var ok = 0;
-        function one(src) {
-            var im = new Image();
-            im.onload = function () {
-                ok++;
-                if (ok >= 2) finish(true);
-            };
-            im.onerror = function () { finish(false); };
-            im.src = src + (src.indexOf('?') === -1 ? '?' : '&') + '_=' + Date.now();
-        }
-
-        one('https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg');
-        one('https://www.youtube.com/favicon.ico');
-    }
-
-    function resolveSource(cb) {
-        var s = String(opt('trailer_bg_source', 'auto'));
-        if (s === 'youtube' || s === 'rutube') {
-            dbg('источник ' + (s === 'youtube' ? 'YouTube' : 'Rutube'));
-            return cb(s);
-        }
-        checkYouTube(function (ok) {
-            dbg(ok ? 'YouTube доступен, беру его' : 'YouTube недоступен, беру Rutube');
-            cb(ok ? 'youtube' : 'rutube');
-        });
-    }
-
-    // ---------- YouTube: трейлер через TMDB ----------
-
-    function pickYouTube(list) {
-        if (!list || !list.length) return null;
-
-        var yt = list.filter(function (v) {
-            return v.site === 'YouTube' && v.key;
-        });
-        var trailers = yt.filter(function (v) {
-            return v.type === 'Trailer';
-        });
-        var pool = trailers.length ? trailers : yt;
-        if (!pool.length) return null;
-
-        var lang = Lampa.Storage.get('language', 'ru');
-        var own = pool.filter(function (v) {
-            return v.iso_639_1 === lang;
-        });
-        pool = own.length ? own : pool;
-
-        pool.sort(function (a, b) {
-            return (b.official ? 1 : 0) - (a.official ? 1 : 0);
-        });
-
-        return pool[0].key;
-    }
-
-    function loadYouTube(card, method, data, cb) {
-        // видео могут лежать в данных карточки в разных местах
-        var inline = (data && data.videos && data.videos.results) ||
-            (card && card.videos && card.videos.results) || [];
-
-        dbg('YouTube: в карточке видео ' + inline.length);
-
-        var found = pickYouTube(inline);
-        if (found) return cb(found);
-
-        var type = method || ((card.first_air_date && !card.title) ? 'tv' : 'movie');
-        var langs = ['ru-RU', 'en-US'];
-
-        function next(i) {
-            if (i >= langs.length) return cb(null);
-
-            var url;
-            try {
-                url = Lampa.TMDB.api(type + '/' + card.id + '/videos?api_key=' + Lampa.TMDB.key() + '&language=' + langs[i]);
-            } catch (err) {
-                dbg('YouTube: нет доступа к TMDB (' + err + ')');
-                return cb(null);
-            }
-
-            fetch(url)
-                .then(function (r) { return r.json(); })
-                .then(function (json) {
-                    var list = (json && json.results) || [];
-                    dbg('YouTube: TMDB ' + langs[i] + ', видео ' + list.length);
-
-                    var key = pickYouTube(list);
-                    if (key) cb(key);
-                    else next(i + 1);
-                })
-                .catch(function (err) {
-                    dbg('YouTube: запрос TMDB не сработал (' + err + ')');
-                    next(i + 1);
-                });
-        }
-
-        next(0);
-    }
-
     // ---------- Rutube: поиск трейлера по названию ----------
 
     // Запрос несколькими способами подряд (JSON или текст). Браузер часто блокирует
@@ -401,6 +282,9 @@
         if (e.status !== undefined) return 'HTTP ' + e.status;
         return String(e);
     }
+
+    // способ запроса, который сработал в прошлый раз: пробуем его первым, чтобы не ждать остальные
+    var goodVia = null;
 
     function httpGet(url, asText, cb, timeout) {
         var errors = [];
@@ -443,6 +327,16 @@
         // свой прокси из настроек (необязательно): адрес дописывается перед ссылкой
         if (proxy) tries.push({ name: 'прокси', run: viaFetch(proxy + url) });
 
+        // прокси остаётся последним, остальные: сначала тот, что работал
+        if (goodVia) {
+            for (var gi = 0; gi < tries.length; gi++) {
+                if (tries[gi].name === goodVia && gi > 0 && tries[gi].name !== 'прокси') {
+                    tries.unshift(tries.splice(gi, 1)[0]);
+                    break;
+                }
+            }
+        }
+
         function next(i) {
             if (i >= tries.length) return cb(errors.join('; '), null);
 
@@ -463,7 +357,10 @@
                     ? (typeof value === 'string' && value.length > 0)
                     : (value && typeof value === 'object'));
 
-                if (good) return cb(null, value, t.name);
+                if (good) {
+                    goodVia = t.name;
+                    return cb(null, value, t.name);
+                }
 
                 errors.push(t.name + ': ' + (err ? errText(err) : 'пустой ответ'));
                 next(i + 1);
@@ -588,20 +485,13 @@
                 var id = best.id || String(best.video_url || '').split('/').filter(Boolean).pop();
                 cb(id || null);
             })();
-        });
+        }, 5000);
     }
 
     // ---------- слой с видео ----------
 
     function buildSrc(source, id, sound) {
-        if (source === 'rutube') {
-            return 'https://rutube.ru/play/embed/' + id + '/?autoplay=true&skinColor=000000';
-        }
-
-        return 'https://www.youtube.com/embed/' + id +
-            '?autoplay=1&mute=' + (sound ? 0 : 1) +
-            '&controls=0&loop=1&playlist=' + id +
-            '&modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&disablekb=1&fs=0';
+        return 'https://rutube.ru/play/embed/' + id + '/?autoplay=true&skinColor=000000';
     }
 
     // Место для слоя трейлера: после своей картинки фона, а если её нет - после общего фона Lampa.
@@ -918,7 +808,9 @@
 
             if (!card) {
                 var act = Lampa.Activity.active();
-                if (act && act.component === 'full') card = act.card || (act.object && act.object.card);
+                if (act && act.component === 'full') {
+                    card = act.card || act.movie || (act.object && (act.object.card || act.object.movie));
+                }
             }
 
             var src = backdropUrl(card);
@@ -987,6 +879,20 @@
         runCardFixTimers();
     }
 
+    // Возврат на карточку (например, со страницы торрентов): события "start" у карточки нет,
+    // поэтому свой слой фона и правила нужно вернуть самим, иначе на секунду видна
+    // родная картинка Lampa со сдвигом и затемнением
+    function resumeCard() {
+        try {
+            if (!opt('fsc_fix_backdrop', true)) return;
+
+            restoreCardFix();
+            $('body').addClass('fsc-card-bg');
+            quickBackdrop(null);
+            runCardFixTimers();
+        } catch (e) {}
+    }
+
     // карточка загрузилась: ничего не сбрасываем (иначе картинка моргнёт), только дополняем
     function continueCardFix(e) {
         if (!opt('fsc_fix_backdrop', true)) return;
@@ -1029,7 +935,7 @@
             var url = (b && (b.m3u8 || b['default'])) || null;
             if (!url) dbg('Rutube: ссылка на поток не получена');
             cb(url);
-        });
+        }, 5000);
     }
 
     // ---------- качество: выбираем нужный вариант из общего плейлиста ----------
@@ -1130,7 +1036,7 @@
 
             dbg('Rutube: качество ' + (best.h ? best.h + 'p' : 'максимальное') + (heights.length ? ' (есть ' + heights.join('/') + ')' : ''));
             cb(best.url, master);
-        });
+        }, 4000);
     }
 
     // ---------- чёрные полосы в самом видео ----------
@@ -1271,7 +1177,9 @@
 
         var sound = opt('trailer_bg_sound', false);
         var zoomMode = String(opt('trailer_bg_zoom', 'auto'));
-        var cors = (opts.cors === undefined) ? (zoomMode === 'auto' && corsState !== false) : opts.cors;
+        // Rutube не отдаёт кадры для анализа (CORS), а проба стоила лишних секунд перед стартом:
+        // доступ к кадру запрашиваем, только если он точно был (в этом запуске приложения)
+        var cors = (opts.cors === undefined) ? (zoomMode === 'auto' && corsState === true) : opts.cors;
 
         var layer = $(
             '<div id="' + LAYER_ID + '" class="trailer-bg">' +
@@ -1316,12 +1224,12 @@
                 // сервер не разрешил доступ к кадру - играем без поиска полос
                 corsState = false;
                 dbg('без доступа к кадру, пробую без CORS');
-                return showVideo(url, id, my, { cors: false, alt: opts.alt });
+                return showVideo(url, id, my, { cors: false, alt: opts.alt, revealAt: opts.revealAt });
             }
 
             if (opts.alt) {
                 dbg('выбранное качество не запустилось, беру обычный поток');
-                return showVideo(opts.alt, id, my, { cors: false });
+                return showVideo(opts.alt, id, my, { cors: false, revealAt: opts.revealAt });
             }
 
             // прямой поток не получился - запасной вариант: плеер Rutube (может показать рекламу)
@@ -1331,8 +1239,35 @@
 
         video.muted = !sound;
         video.addEventListener('error', fail);
+
+        // Видео начинает грузиться чуть раньше, чем нужно (без звука), и ждёт спрятанным.
+        // Показываем его в назначенный момент: пауза до трейлера не растёт на время загрузки.
+        var revealed = false;
+        var revealTimer = null;
+
         video.addEventListener('playing', function () {
             clearTimeout(guard);
+
+            if (revealed) return;
+
+            var wait = (opts.revealAt || 0) - Date.now();
+
+            if (wait > 80) {
+                // уже играет, но показывать рано: ставим на паузу, буфер продолжает наполняться
+                try { video.pause(); } catch (e) {}
+
+                clearTimeout(revealTimer);
+                revealTimer = setTimeout(function () {
+                    if (my !== token || !layer.parent().length) return;
+
+                    var p = video.play();
+                    if (p && p.catch) p.catch(function () {});
+                }, wait);
+
+                return;
+            }
+
+            revealed = true;
             dbg('играет (Rutube, прямой поток)');
             layer.addClass('trailer-bg--ready');
             hideBackdrop();
@@ -1360,7 +1295,7 @@
             video.src = url;
             tryPlay();
         } else if (window.Hls && window.Hls.isSupported && window.Hls.isSupported()) {
-            var hls = new window.Hls();
+            var hls = new window.Hls({ startFragPrefetch: true, maxBufferLength: 15, backBufferLength: 5 });
             layer.data('hls', hls);
             hls.loadSource(url);
             hls.attachMedia(video);
@@ -1370,22 +1305,6 @@
             tryPlay();
         } else {
             fail();
-        }
-    }
-
-    function show(source, id, my) {
-        if (source === 'rutube' && opt('trailer_bg_rutube_direct', true)) {
-            rutubeStream(id, function (url) {
-                if (my !== token) return;
-                if (!url) return showIframe('rutube', id);
-
-                bestStream(url, function (best, alt) {
-                    if (my !== token) return;
-                    showVideo(best, id, my, { alt: alt });
-                });
-            });
-        } else {
-            showIframe(source, id);
         }
     }
 
@@ -1405,6 +1324,37 @@
         }, 250);
     }
 
+    // id трейлера на Rutube для уже открытых карточек (повторное открытие без поиска)
+    var idCache = {};
+
+    // Всё, что нужно для запуска, готовится заранее: поиск ролика, ссылка на поток, выбор качества.
+    // cb({ id, url, alt }) или cb(null), если трейлера нет
+    function prepareTrailer(card, my, cb) {
+        var key = String(card.id) + ((card.name && !card.title) ? 't' : 'm');
+
+        function withId(id) {
+            if (my !== token) return;
+            if (!id) return cb(null);
+
+            idCache[key] = id;
+
+            if (!opt('trailer_bg_rutube_direct', true)) return cb({ id: id });
+
+            rutubeStream(id, function (url) {
+                if (my !== token) return;
+                if (!url) return cb({ id: id });
+
+                bestStream(url, function (best, alt) {
+                    if (my !== token) return;
+                    cb({ id: id, url: best, alt: alt });
+                });
+            });
+        }
+
+        if (idCache[key]) return withId(idCache[key]);
+        loadRutube(card, withId);
+    }
+
     function startTrailer(e) {
         stopTrailer();
         dbgReset();
@@ -1421,25 +1371,40 @@
         dbg('«' + String(card.title || card.name || card.original_title || '?').slice(0, 30) + '»');
 
         var delay = parseInt(opt('trailer_bg_delay', '3'), 10) || 3;
-        var method = e.object && e.object.method;
+        var sound = !!opt('trailer_bg_sound', false);
+
+        // Момент, когда трейлер должен появиться на экране. Поиск и ссылка на поток готовятся
+        // сразу, а само видео без звука начинает грузиться на 2 секунды раньше показа.
+        var revealAt = Date.now() + delay * 1000;
+        var armed = false;
+        var launched = false;
+        var prepared; // undefined - ещё готовится, null - трейлера нет
+
+        function launch() {
+            if (launched || my !== token || !armed || prepared === undefined) return;
+            launched = true;
+
+            // трейлера нет - остаётся обычный фон
+            if (!prepared) return dbg('не найден, остаётся обычный фон');
+
+            dbg('нашёл, запускаю');
+            watch();
+
+            if (prepared.url) showVideo(prepared.url, prepared.id, my, { alt: prepared.alt, revealAt: sound ? 0 : revealAt });
+            else showIframe('rutube', prepared.id);
+        }
+
+        var armDelay = sound ? delay * 1000 : Math.max(0, delay * 1000 - 2000);
 
         timer = setTimeout(function () {
-            resolveSource(function (source) {
-                if (my !== token) return;
+            armed = true;
+            launch();
+        }, armDelay);
 
-                function done(id) {
-                    // трейлера нет - остаётся обычный фон
-                    if (!id) dbg('не найден, остаётся обычный фон');
-                    if (!id || my !== token) return;
-                    dbg('нашёл, запускаю');
-                    show(source, id, my);
-                    watch();
-                }
-
-                if (source === 'rutube') loadRutube(card, done);
-                else loadYouTube(card, method, e.data, done);
-            });
-        }, delay * 1000);
+        prepareTrailer(card, my, function (p) {
+            prepared = p;
+            launch();
+        });
     }
 
     // =====================================================================
@@ -1607,20 +1572,6 @@
                 field: {
                     name: 'Трейлер на фоне',
                     description: 'Если трейлера нет, остаётся обычный фон'
-                }
-            });
-
-            queueParam({
-                component: 'fullscreen_card',
-                param: {
-                    name: 'trailer_bg_source',
-                    type: 'select',
-                    values: { 'auto': 'Авто', 'youtube': 'YouTube', 'rutube': 'Rutube' },
-                    'default': 'auto'
-                },
-                field: {
-                    name: 'Источник трейлеров',
-                    description: 'Авто: если YouTube недоступен, берётся Rutube'
                 }
             });
 
@@ -2661,6 +2612,9 @@
         function decorate(el) {
             if (el.__rq) return;
 
+            // у карточки долго нет данных - больше не проверяем, чтобы просмотр не замедлялся
+            if (el.__rqn > 8) return;
+
             // старый плагин rating-quality уже повесил свои плашки: не дублируем
             if (el.querySelector('.rq-rate, .rq-year')) return;
 
@@ -2669,7 +2623,12 @@
             if (!wantRate && !wantYear) return;
 
             var d = getData(el);
-            if (!d) return;
+
+            if (!d) {
+                el.__rqn = (el.__rqn || 0) + 1;
+                return;
+            }
+
             el.__rq = true;
 
             var view = el.querySelector('.card__view') || el;
@@ -2697,6 +2656,9 @@
                     rate = document.createElement('div');
                     rate.className = 'fsc-rq-rate';
                     view.appendChild(rate);
+
+                    // родная плашка рейтинга Lampa выглядывала из-под нашей
+                    el.classList.add('fsc-has-rate');
                 }
 
                 var c = pillStyle(value);
@@ -2794,10 +2756,19 @@
         var changeTimer = null;
         var started = false;
 
-        var PARALLEL = 2;    // сколько картинок качаем одновременно
+        var PARALLEL = 1;    // сколько картинок качаем одновременно
         var MAX_REMEMBER = 200;
+        var inflight = [];   // картинки, которые качаются прямо сейчас
+        var idleTimer = null;
 
         function pump() {
+            // пока грузится картинка, которую нужно показать, предзагрузку не начинаем
+            if (typeof MainBg !== 'undefined' && MainBg.loading && MainBg.loading()) {
+                clearTimeout(idleTimer);
+                idleTimer = setTimeout(pump, 150);
+                return;
+            }
+
             while (running < PARALLEL && pending.length) {
                 var url = pending.shift();
 
@@ -2815,12 +2786,35 @@
                 running++;
 
                 var img = new Image();
+                img._u = url;
+                inflight.push(img);
+
                 img.onload = img.onerror = function () {
+                    var i = inflight.indexOf(this);
+                    if (i !== -1) inflight.splice(i, 1);
+
                     running--;
                     pump();
                 };
+
                 img.src = url;
             }
+        }
+
+        // фокус ушёл дальше: недокачанные предзагрузки отменяем, иначе очередь растёт и
+        // нужная картинка ждёт позади ненужных (так фон со временем начинал тормозить)
+        function abortAll() {
+            pending = [];
+
+            inflight.forEach(function (im) {
+                im.onload = im.onerror = null;
+
+                try { im.src = ''; } catch (e) {}
+                delete done[im._u];
+            });
+
+            inflight = [];
+            running = 0;
         }
 
         function cardData(el) {
@@ -2853,7 +2847,7 @@
 
             var out = [];
 
-            [1, 2, -1, 3, -2, 4, 5, -3].forEach(function (d) {
+            [1, 2, -1, 3].forEach(function (d) {
                 var c = list[idx + d];
                 if (c) out.push(c);
             });
@@ -2870,14 +2864,18 @@
             if (!opt('fsc_fast_bg', true)) return;
 
             // старые задачи уже не нужны: фокус ушёл дальше
-            pending = [];
+            abortAll();
+            clearTimeout(idleTimer);
 
-            neighbors(cur).forEach(function (c) {
-                var url = backdropUrl(cardData(c));
-                if (url && !done[url] && pending.indexOf(url) === -1) pending.push(url);
-            });
+            // качаем соседей, только когда листание остановилось
+            idleTimer = setTimeout(function () {
+                neighbors(cur).forEach(function (c) {
+                    var url = MainBg.sharp(backdropUrl(cardData(c)));
+                    if (url && !done[url] && pending.indexOf(url) === -1) pending.push(url);
+                });
 
-            pump();
+                pump();
+            }, 220);
         }
 
         function start() {
@@ -2911,6 +2909,35 @@
         var token = 0;
         var timer = null;
         var started = false;
+        var loader = null;    // загрузка новой картинки (при смене отменяем прошлую, чтобы очередь не росла)
+        var loading = false;
+
+        // Lampa на странице торрентов и в некоторых списках даёт маленькую размытую картинку (w200 и т.п.).
+        // Берём ту же картинку в полном размере: фон получается резким, как на странице фильма.
+        function sharp(url) {
+            return String(url || '').replace(/\/t\/p\/w(?:92|154|185|200|300|342|500)\//, '/t/p/original/');
+        }
+
+        // экраны, где фон показываем без затемнения (как на странице фильма)
+        function noDim() {
+            try {
+                var act = Lampa.Activity.active();
+                return !!act && (act.component === 'torrents' || act.component === 'full');
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function abortLoad() {
+            if (loader) {
+                loader.onload = loader.onerror = null;
+
+                try { loader.src = ''; } catch (e) {}
+                loader = null;
+            }
+
+            loading = false;
+        }
 
         // яркость фона: 1 - как есть, меньше - темнее
         function brightness() {
@@ -2952,7 +2979,7 @@
 
             imgs = [el.children[0], el.children[1]];
             dim = el.children[2];
-            dim.style.opacity = String(1 - brightness());
+            dim.style.opacity = noDim() ? '0' : String(1 - brightness());
 
             return el;
         }
@@ -2960,6 +2987,7 @@
         function hide() {
             token++;
             current = '';
+            abortLoad();
 
             var el = document.getElementById(ID);
             if (el) el.style.display = 'none';
@@ -2983,32 +3011,53 @@
             var my = ++token;
             var back = imgs[1 - front];
 
-            // грузим отдельным объектом: видимые картинки не трогаем, пока новая не готова
-            var loader = new Image();
+            // прошлая незавершённая загрузка уже не нужна: отменяем, чтобы она не занимала канал
+            abortLoad();
 
-            loader.onload = function () {
+            // грузим отдельным объектом: видимые картинки не трогаем, пока новая не готова
+            var mine = new Image();
+            loader = mine;
+            loading = true;
+
+            mine.onload = function () {
                 if (my !== token) return; // уже просят другую картинку
+
+                loading = false;
+                if (loader === mine) loader = null;
 
                 back.src = url;
 
                 var go = function () {
                     if (my !== token) return;
 
+                    var old = imgs[front];
+
                     // новая картинка включается целиком, старая выключается: наложения нет
                     back.style.opacity = '1';
-                    imgs[front].style.opacity = '0';
+                    old.style.opacity = '0';
 
                     front = 1 - front;
                     current = url;
                     el.style.display = '';
+
+                    // скрытую картинку освобождаем: иначе в памяти копятся большие кадры и список тормозит
+                    setTimeout(function () {
+                        if (old !== imgs[front]) old.removeAttribute('src');
+                    }, 400);
                 };
 
                 if (typeof back.decode === 'function') back.decode().then(go, go);
                 else go();
             };
 
-            loader.onerror = function () {};
-            loader.src = url;
+            mine.onerror = function () {
+                if (loader === mine) {
+                    loader = null;
+                    loading = false;
+                }
+            };
+
+            mine.src = url;
         }
 
         function install() {
@@ -3027,8 +3076,10 @@
                         return origChange.apply(this, arguments);
                     }
 
+                    var big = sharp(url);
+
                     clearTimeout(timer);
-                    timer = setTimeout(function () { show(url); }, 40);
+                    timer = setTimeout(function () { show(big); }, 40);
                 };
 
                 bg.immediately = function (url) {
@@ -3037,11 +3088,16 @@
                         return origImmediately.apply(this, arguments);
                     }
 
+                    var big = sharp(url);
+
                     clearTimeout(timer);
-                    show(url);
+                    show(big);
 
                     // родной фон Lampa тоже обновляем, чтобы её состояние не расходилось с нашим
-                    return origImmediately.apply(this, arguments);
+                    var args = Array.prototype.slice.call(arguments);
+                    args[0] = big;
+
+                    return origImmediately.apply(this, args);
                 };
 
                 bg._fsc_main = true;
@@ -3054,12 +3110,33 @@
             install();
         }
 
+        // фон страницы торрентов: та же картинка, что на странице фильма (на случай, если Lampa
+        // поставила свою размытую картинку в обход Background)
+        function ensureTorrents() {
+            try {
+                var act = Lampa.Activity.active();
+                if (!act || act.component !== 'torrents') return;
+
+                var movie = act.movie || act.card || (act.object && (act.object.movie || act.object.card));
+                var url = sharp(backdropUrl(movie));
+                if (!url) return;
+
+                if (url !== current && !loading) show(url);
+
+                var el = document.getElementById(ID);
+                if (el && dim) dim.style.opacity = '0';
+            } catch (e) {}
+        }
+
         return {
             start: start,
             install: install,
             show: show,
             hide: hide,
-            brightness: brightness
+            brightness: brightness,
+            sharp: sharp,
+            loading: function () { return loading; },
+            ensureTorrents: ensureTorrents
         };
     })();
 
@@ -3080,18 +3157,182 @@
             blue: '#4fc3f7'
         };
 
+        var TYPES = ['torrent-item', 'torrent-file', 'torrent-serial'];
         var SEL = '.torrent-item.focus, .torrent-file.focus, .torrent-serial.focus';
+
+        // Какой слой рисует главную (внешнюю) рамку: сам элемент ('el'), ::before или ::after.
+        // Всё остальное у активного элемента считается лишней внутренней рамкой и убирается.
+        // Пока слой не определён, считаем главным ::after (так в Lampa чаще всего).
+        var main = {};
+        var probed = {};
         var lastEl = null;
         var timers = [];
         var started = false;
+        var styleEl = null;
 
-        // выбранный цвет; пустая строка - "как в Lampa", ничего не меняем
+        // выбранный цвет; пустая строка - "как в Lampa", цвет не меняем
         function chosen() {
             return COLORS[String(opt('fsc_ring_color', 'white'))] || '';
         }
 
         function rgbOf(hex) {
             return [parseInt(hex.substr(1, 2), 16), parseInt(hex.substr(3, 2), 16), parseInt(hex.substr(5, 2), 16)];
+        }
+
+        function typeOf(el) {
+            for (var i = 0; i < TYPES.length; i++) {
+                if (el.classList.contains(TYPES[i])) return TYPES[i];
+            }
+
+            return '';
+        }
+
+        // ---------- правила ----------
+
+        function buildCss() {
+            var css = '';
+
+            TYPES.forEach(function (t) {
+                var m = main[t] || 'after';
+                var sel = {
+                    el: '.' + t + '.focus',
+                    before: '.' + t + '.focus::before',
+                    after: '.' + t + '.focus::after'
+                };
+
+                ['el', 'before', 'after'].forEach(function (k) {
+                    if (k === m) {
+                        // главная рамка: выбранный цвет
+                        css += 'body.fsc-ring ' + sel[k] + '{border-color:var(--fsc-ring) !important;outline-color:var(--fsc-ring) !important;}';
+                    } else if (k === 'el' && m !== 'el') {
+                        // лишняя рамка самого элемента
+                        css += 'body.fsc-ringfix ' + sel[k] + '{box-shadow:none !important;border-color:transparent !important;outline-color:transparent !important;}';
+                    } else if (k !== 'el') {
+                        // лишняя рамка в ::before / ::after: убираем сразу, без вспышки цвета
+                        css += 'body.fsc-ringfix ' + sel[k] + '{box-shadow:none !important;border-color:transparent !important;outline-color:transparent !important;animation:none !important;transition:none !important;}';
+                    }
+                });
+
+                // на время замера отключаем анимации, чтобы увидеть итоговые значения
+                css += 'body.fsc-ringprobe .' + t + ',body.fsc-ringprobe .' + t + '::before,body.fsc-ringprobe .' + t + '::after{transition:none !important;animation:none !important;}';
+            });
+
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'fsc-ring-style';
+                document.head.appendChild(styleEl);
+            }
+
+            styleEl.textContent = css;
+        }
+
+        // ---------- замер: какой слой рисует главную рамку ----------
+
+        function visibleColor(c) {
+            var m = /rgba?\(([^)]+)\)/.exec(c || '');
+            if (!m) return false;
+
+            var p = m[1].split(',');
+            return (p.length > 3 ? parseFloat(p[3]) : 1) > 0.05;
+        }
+
+        // толщина самой чёткой внешней рамки-тени (внутренние и мягкие свечения не считаем)
+        function shadowScore(sh) {
+            if (!sh || sh === 'none') return 0;
+
+            var colors = sh.match(/rgba?\([^)]*\)/g) || [];
+            var parts = sh.replace(/rgba?\([^)]*\)/g, '#').split(',');
+            var best = 0;
+
+            for (var i = 0; i < parts.length; i++) {
+                var p = parts[i];
+                if (p.indexOf('inset') !== -1) continue;
+                if (colors[i] && !visibleColor(colors[i])) continue;
+
+                var n = p.match(/-?[\d.]+px/g) || [];
+                var blur = parseFloat(n[2]) || 0;
+                var spread = parseFloat(n[3]) || 0;
+
+                if (blur <= spread + 1 && spread > best) best = spread;
+            }
+
+            return best;
+        }
+
+        function layerScore(cs, pseudo) {
+            if (!cs) return 0;
+            if (pseudo && (!cs.content || cs.content === 'none' || cs.content === 'normal')) return 0;
+
+            var score = 0;
+            var bw = Math.max(parseFloat(cs.borderTopWidth) || 0, parseFloat(cs.borderLeftWidth) || 0);
+
+            if (bw && cs.borderTopStyle !== 'none' && visibleColor(cs.borderTopColor)) score = Math.max(score, bw);
+
+            var ow = parseFloat(cs.outlineWidth) || 0;
+            if (ow && cs.outlineStyle !== 'none' && visibleColor(cs.outlineColor)) score = Math.max(score, ow);
+
+            return Math.max(score, shadowScore(cs.boxShadow));
+        }
+
+        function probe(el, type) {
+            if (!type || probed[type]) return;
+            probed[type] = true;
+
+            var b = document.body;
+            var hadRing = b.classList.contains('fsc-ring');
+            var hadFix = b.classList.contains('fsc-ringfix');
+            var res = { after: 0, before: 0, el: 0 };
+
+            try {
+                reset(el);
+
+                // на мгновение (без отрисовки) отключаем свои правила и смотрим родные значения
+                b.classList.remove('fsc-ring');
+                b.classList.remove('fsc-ringfix');
+                b.classList.add('fsc-ringprobe');
+
+                res.el = layerScore(window.getComputedStyle(el), false);
+                res.before = layerScore(window.getComputedStyle(el, '::before'), true);
+                res.after = layerScore(window.getComputedStyle(el, '::after'), true);
+            } catch (e) {}
+
+            b.classList.remove('fsc-ringprobe');
+            if (hadRing) b.classList.add('fsc-ring');
+            if (hadFix) b.classList.add('fsc-ringfix');
+
+            // побеждает самая толстая рамка; при равенстве порядок ::after, ::before, сам элемент
+            var best = 'after';
+            var top = 0;
+
+            ['after', 'before', 'el'].forEach(function (k) {
+                if (res[k] > top + 0.5) {
+                    top = res[k];
+                    best = k;
+                }
+            });
+
+            if (top < 1.5) best = 'after';
+
+            if (main[type] !== best) {
+                main[type] = best;
+                buildCss();
+            }
+        }
+
+        // ---------- цвет теней главной рамки ----------
+
+        // внутренние тени (inset) убираем совсем, остальные перекрашиваем
+        function cleanShadow(sh) {
+            var colors = sh.match(/rgba?\([^)]*\)/g) || [];
+            var parts = sh.replace(/rgba?\([^)]*\)/g, '\u0001').split(',');
+            var out = [];
+
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].indexOf('inset') !== -1) continue;
+                out.push(parts[i].replace('\u0001', colors[i] || '').replace(/^\s+|\s+$/g, ''));
+            }
+
+            return out.length ? out.join(', ') : 'none';
         }
 
         // В тени меняем только цветные части: тёмная тень для объёма остаётся как была
@@ -3123,33 +3364,42 @@
             if (!hex) return;
 
             try {
-                var sh = window.getComputedStyle(el).boxShadow;
+                var m = main[typeOf(el)] || 'after';
 
-                if (sh && sh !== 'none' && /rgba?\(/.test(sh)) {
-                    var r = recolor(sh, hex);
-                    if (r !== sh) el.style.setProperty('box-shadow', r, 'important');
+                if (m === 'el') {
+                    var sh = window.getComputedStyle(el).boxShadow;
+
+                    if (sh && sh !== 'none' && /rgba?\(/.test(sh)) {
+                        var r = recolor(cleanShadow(sh), hex);
+                        if (r !== sh) el.style.setProperty('box-shadow', r, 'important');
+                    }
+
+                    return;
                 }
 
-                [['::before', 'b'], ['::after', 'a']].forEach(function (x) {
-                    var psh = window.getComputedStyle(el, x[0]).boxShadow;
+                var ps = m === 'before' ? '::before' : '::after';
+                var key = m === 'before' ? 'b' : 'a';
+                var psh = window.getComputedStyle(el, ps).boxShadow;
 
-                    if (psh && psh !== 'none' && /rgba?\(/.test(psh)) {
-                        var pr = recolor(psh, hex);
+                if (psh && psh !== 'none' && /rgba?\(/.test(psh)) {
+                    var pr = recolor(cleanShadow(psh), hex);
 
-                        if (pr !== psh) {
-                            el.style.setProperty('--fsc-ring-' + x[1], pr);
-                            el.classList.add('fsc-ring-' + x[1]);
-                        }
+                    if (pr !== psh) {
+                        el.style.setProperty('--fsc-ring-' + key, pr);
+                        el.classList.add('fsc-ring-' + key);
                     }
-                });
+                }
             } catch (e) {}
         }
 
-        // цвет рамки как переменная на body: по ней работает стиль
+        // цвет рамки как переменная на body: по ней работают правила
         function apply() {
             var hex = chosen();
             var b = document.body;
             if (!b || !b.style) return;
+
+            // лишняя внутренняя рамка убирается всегда, цвет меняется только если он выбран
+            b.classList.add('fsc-ringfix');
 
             if (hex) {
                 b.style.setProperty('--fsc-ring', hex);
@@ -3170,9 +3420,14 @@
             if (lastEl) reset(lastEl);
             lastEl = cur;
 
-            if (!cur || !chosen()) return;
+            if (!cur) return;
 
-            // рамка может появляться с анимацией, поэтому проверяем несколько раз
+            // первый раз для каждого вида списка определяем, какой слой главный
+            probe(cur, typeOf(cur));
+
+            if (!chosen()) return;
+
+            // тень может появляться с анимацией, поэтому проверяем несколько раз
             [0, 150, 400].forEach(function (ms) {
                 timers.push(setTimeout(function () {
                     if (lastEl === cur) paint(cur);
@@ -3184,8 +3439,9 @@
             if (started) return;
             started = true;
 
+            buildCss();
             apply();
-            setInterval(tick, 200);
+            setInterval(tick, 100);
         }
 
         return { start: start, apply: apply, recolor: recolor, chosen: chosen, tick: tick, paint: paint, reset: reset };
@@ -3312,6 +3568,11 @@
                     stopTrailer();
                     restoreCardFix();
                 }
+
+                // вернулись на карточку: сразу возвращаем свой фон
+                if (comp === 'full' && type === 'start' && !document.body.classList.contains('fsc-card-bg')) {
+                    resumeCard();
+                }
             });
         } catch (err) {}
 
@@ -3342,7 +3603,14 @@
         setInterval(function () {
             try {
                 var act = Lampa.Activity.active();
-                if (act && act.component === 'full') return;
+
+                if (act && act.component === 'full') {
+                    if (!document.body.classList.contains('fsc-card-bg')) resumeCard();
+                    return;
+                }
+
+                // страница торрентов: фон как на странице фильма
+                if (act && act.component === 'torrents') MainBg.ensureTorrents();
 
                 $('body').removeClass('fsc-card-bg');
                 $('#fsc-backdrop').remove();
