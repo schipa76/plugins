@@ -232,6 +232,8 @@
             '#fsc-backdrop{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;opacity:1;}' +
             '#fsc-backdrop.fsc-backdrop--on{opacity:1;}' +
             '#fsc-backdrop img{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;}' +
+            '#fsc-backdrop{transition:filter .25s ease;}' +
+            '#fsc-backdrop.fsc-soft{filter:brightness(var(--fsc-soft-b,.9));}' +
 
             // свой фон списков (главная и каталоги): две картинки, меняются мгновенно, без наложения
             '#fsc-mainbg{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;pointer-events:none;background:#000;}' +
@@ -638,7 +640,16 @@
 
         cardFixTimers.forEach(function (t) { clearTimeout(t); });
         cardFixTimers = [];
-        $('#fsc-backdrop').css({ visibility: 'hidden', transition: 'none', opacity: 1 });
+
+        // Свой слой с картинкой остаётся на экране (это тот же фильм), только слегка притемняется, как фон
+        // на страницах торрентов и онлайна. Ни один слой не прячется, поэтому при возврате нет промежутка,
+        // когда виден другой фон: меняется только яркость.
+        var bd = $('#fsc-backdrop');
+
+        if (bd.length) {
+            bd[0].style.setProperty('--fsc-soft-b', String(MainBg.brightness()));
+            bd.addClass('fsc-soft');
+        }
     }
 
     function softReturn() {
@@ -647,13 +658,7 @@
         var bd = $('#fsc-backdrop');
 
         if (bd.length) {
-            // плавное появление: без резкого скачка яркости при возврате
-            bd.css({ transition: 'none', opacity: 0, visibility: '' });
-
-            requestAnimationFrame(function () {
-                bd.css({ transition: 'opacity .25s ease', opacity: 1 });
-            });
-
+            bd.removeClass('fsc-soft');
             runCardFixTimers();
         } else {
             resumeCard();
