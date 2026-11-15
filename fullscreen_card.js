@@ -245,17 +245,13 @@
             ['torrent-item', 'torrent-file', 'torrent-serial'].map(function (t) {
                 var f = 'body.fsc-ring .' + t + '.focus';
 
-                return f + '{box-shadow:0 0 0 .3em var(--fsc-ring) !important;border-color:transparent !important;' +
-                    'outline:none !important;animation:none !important;' +
-                    'transition:box-shadow 0s,border-color 0s,outline 0s,opacity 0s !important;}' +
+                return f + '{box-shadow:none !important;border-color:transparent !important;' +
+                    'outline:.3em solid var(--fsc-ring) !important;outline-offset:.3em !important;animation:none !important;' +
+                    'transition:box-shadow 0s,border-color 0s,outline 0s,outline-offset 0s,opacity 0s !important;}' +
                     f + '::before,' + f + '::after{box-shadow:none !important;border-color:transparent !important;' +
                     'outline-color:transparent !important;animation:none !important;transition:none !important;}';
             }).join('') +
 
-            // фон страницы торрентов: слегка размытый и чуть затемнённый
-            '#fsc-mainbg img{transition:filter .3s ease;}' +
-            '#fsc-mainbg.fsc-soft img{filter:blur(3px);transform:scale(1.04);}' +
-            '#fsc-mainbg .fsc-mainbg__dim{transition:opacity .3s ease;}' +
 
             // у карточек в списках своя плашка рейтинга: родную плашку Lampa под ней не показываем
             '.fsc-has-rate .card__vote{display:none !important;}' +
@@ -2998,11 +2994,9 @@
             var scr = screen();
 
             if (scr === 'full') dim.style.opacity = '0';
-            else if (scr === 'torrents') dim.style.opacity = '0.22';
             else dim.style.opacity = String(1 - brightness());
 
-            if (scr === 'torrents') el.classList.add('fsc-soft');
-            else el.classList.remove('fsc-soft');
+            el.classList.remove('fsc-soft');
 
             return el;
         }
