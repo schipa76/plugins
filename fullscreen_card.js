@@ -239,9 +239,23 @@
             '.fsc-nofilter{filter:none !important;-webkit-backdrop-filter:none !important;backdrop-filter:none !important;}' +
             '.fsc-nocolor{background:none !important;background-color:transparent !important;}' +
 
-            // рамка активного торрента, файла и серии: сами правила собирает модуль Ring (<style id="fsc-ring-style">)
-            '.fsc-ring-b::before{box-shadow:var(--fsc-ring-b) !important;}' +
-            '.fsc-ring-a::after{box-shadow:var(--fsc-ring-a) !important;}' +
+            // рамка активного торрента, файла и серии: своя, сплошная, как у блока "Нет истории просмотра".
+            // Родные рамки Lampa (сам элемент, ::before, ::after) гасятся, анимации и переходы выключены,
+            // поэтому цвет не мигает и не бывает полупрозрачным. Цвет задаёт настройка (--fsc-ring).
+            ['torrent-item', 'torrent-file', 'torrent-serial'].map(function (t) {
+                var f = 'body.fsc-ring .' + t + '.focus';
+
+                return f + '{box-shadow:0 0 0 .3em var(--fsc-ring) !important;border-color:transparent !important;' +
+                    'outline:none !important;animation:none !important;' +
+                    'transition:box-shadow 0s,border-color 0s,outline 0s,opacity 0s !important;}' +
+                    f + '::before,' + f + '::after{box-shadow:none !important;border-color:transparent !important;' +
+                    'outline-color:transparent !important;animation:none !important;transition:none !important;}';
+            }).join('') +
+
+            // фон страницы торрентов: слегка размытый и чуть затемнённый
+            '#fsc-mainbg img{transition:filter .3s ease;}' +
+            '#fsc-mainbg.fsc-soft img{filter:blur(3px);transform:scale(1.04);}' +
+            '#fsc-mainbg .fsc-mainbg__dim{transition:opacity .3s ease;}' +
 
             // у карточек в списках своя плашка рейтинга: родную плашку Lampa под ней не показываем
             '.fsc-has-rate .card__vote{display:none !important;}' +
@@ -2918,14 +2932,16 @@
             return String(url || '').replace(/\/t\/p\/w(?:92|154|185|200|300|342|500)\//, '/t/p/original/');
         }
 
-        // экраны, где фон показываем без затемнения (как на странице фильма)
-        function noDim() {
+        // 'full' - страница фильма (фон без затемнения), 'torrents' - торренты (чуть размыт и затемнён)
+        function screen() {
             try {
                 var act = Lampa.Activity.active();
-                return !!act && (act.component === 'torrents' || act.component === 'full');
-            } catch (e) {
-                return false;
-            }
+                if (!act) return '';
+                if (act.component === 'torrents') return 'torrents';
+                if (act.component === 'full') return 'full';
+            } catch (e) {}
+
+            return '';
         }
 
         function abortLoad() {
@@ -2979,7 +2995,14 @@
 
             imgs = [el.children[0], el.children[1]];
             dim = el.children[2];
-            dim.style.opacity = noDim() ? '0' : String(1 - brightness());
+            var scr = screen();
+
+            if (scr === 'full') dim.style.opacity = '0';
+            else if (scr === 'torrents') dim.style.opacity = '0.22';
+            else dim.style.opacity = String(1 - brightness());
+
+            if (scr === 'torrents') el.classList.add('fsc-soft');
+            else el.classList.remove('fsc-soft');
 
             return el;
         }
@@ -3123,8 +3146,8 @@
 
                 if (url !== current && !loading) show(url);
 
-                var el = document.getElementById(ID);
-                if (el && dim) dim.style.opacity = '0';
+                // применяем размытие и затемнение страницы торрентов
+                if (document.getElementById(ID)) ensure();
             } catch (e) {}
         }
 
@@ -3157,249 +3180,20 @@
             blue: '#4fc3f7'
         };
 
-        var TYPES = ['torrent-item', 'torrent-file', 'torrent-serial'];
-        var SEL = '.torrent-item.focus, .torrent-file.focus, .torrent-serial.focus';
-
-        // Какой слой рисует главную (внешнюю) рамку: сам элемент ('el'), ::before или ::after.
-        // Всё остальное у активного элемента считается лишней внутренней рамкой и убирается.
-        // Пока слой не определён, считаем главным ::after (так в Lampa чаще всего).
-        var main = {};
-        var probed = {};
-        var lastEl = null;
-        var timers = [];
         var started = false;
-        var styleEl = null;
 
-        // выбранный цвет; пустая строка - "как в Lampa", цвет не меняем
+        // выбранный цвет; пустая строка - "как в Lampa", рамку не трогаем
         function chosen() {
             return COLORS[String(opt('fsc_ring_color', 'white'))] || '';
         }
 
-        function rgbOf(hex) {
-            return [parseInt(hex.substr(1, 2), 16), parseInt(hex.substr(3, 2), 16), parseInt(hex.substr(5, 2), 16)];
-        }
-
-        function typeOf(el) {
-            for (var i = 0; i < TYPES.length; i++) {
-                if (el.classList.contains(TYPES[i])) return TYPES[i];
-            }
-
-            return '';
-        }
-
-        // ---------- правила ----------
-
-        function buildCss() {
-            var css = '';
-
-            TYPES.forEach(function (t) {
-                var m = main[t] || 'after';
-                var sel = {
-                    el: '.' + t + '.focus',
-                    before: '.' + t + '.focus::before',
-                    after: '.' + t + '.focus::after'
-                };
-
-                ['el', 'before', 'after'].forEach(function (k) {
-                    if (k === m) {
-                        // главная рамка: выбранный цвет
-                        css += 'body.fsc-ring ' + sel[k] + '{border-color:var(--fsc-ring) !important;outline-color:var(--fsc-ring) !important;}';
-                    } else if (k === 'el' && m !== 'el') {
-                        // лишняя рамка самого элемента
-                        css += 'body.fsc-ringfix ' + sel[k] + '{box-shadow:none !important;border-color:transparent !important;outline-color:transparent !important;}';
-                    } else if (k !== 'el') {
-                        // лишняя рамка в ::before / ::after: убираем сразу, без вспышки цвета
-                        css += 'body.fsc-ringfix ' + sel[k] + '{box-shadow:none !important;border-color:transparent !important;outline-color:transparent !important;animation:none !important;transition:none !important;}';
-                    }
-                });
-
-                // на время замера отключаем анимации, чтобы увидеть итоговые значения
-                css += 'body.fsc-ringprobe .' + t + ',body.fsc-ringprobe .' + t + '::before,body.fsc-ringprobe .' + t + '::after{transition:none !important;animation:none !important;}';
-            });
-
-            if (!styleEl) {
-                styleEl = document.createElement('style');
-                styleEl.id = 'fsc-ring-style';
-                document.head.appendChild(styleEl);
-            }
-
-            styleEl.textContent = css;
-        }
-
-        // ---------- замер: какой слой рисует главную рамку ----------
-
-        function visibleColor(c) {
-            var m = /rgba?\(([^)]+)\)/.exec(c || '');
-            if (!m) return false;
-
-            var p = m[1].split(',');
-            return (p.length > 3 ? parseFloat(p[3]) : 1) > 0.05;
-        }
-
-        // толщина самой чёткой внешней рамки-тени (внутренние и мягкие свечения не считаем)
-        function shadowScore(sh) {
-            if (!sh || sh === 'none') return 0;
-
-            var colors = sh.match(/rgba?\([^)]*\)/g) || [];
-            var parts = sh.replace(/rgba?\([^)]*\)/g, '#').split(',');
-            var best = 0;
-
-            for (var i = 0; i < parts.length; i++) {
-                var p = parts[i];
-                if (p.indexOf('inset') !== -1) continue;
-                if (colors[i] && !visibleColor(colors[i])) continue;
-
-                var n = p.match(/-?[\d.]+px/g) || [];
-                var blur = parseFloat(n[2]) || 0;
-                var spread = parseFloat(n[3]) || 0;
-
-                if (blur <= spread + 1 && spread > best) best = spread;
-            }
-
-            return best;
-        }
-
-        function layerScore(cs, pseudo) {
-            if (!cs) return 0;
-            if (pseudo && (!cs.content || cs.content === 'none' || cs.content === 'normal')) return 0;
-
-            var score = 0;
-            var bw = Math.max(parseFloat(cs.borderTopWidth) || 0, parseFloat(cs.borderLeftWidth) || 0);
-
-            if (bw && cs.borderTopStyle !== 'none' && visibleColor(cs.borderTopColor)) score = Math.max(score, bw);
-
-            var ow = parseFloat(cs.outlineWidth) || 0;
-            if (ow && cs.outlineStyle !== 'none' && visibleColor(cs.outlineColor)) score = Math.max(score, ow);
-
-            return Math.max(score, shadowScore(cs.boxShadow));
-        }
-
-        function probe(el, type) {
-            if (!type || probed[type]) return;
-            probed[type] = true;
-
-            var b = document.body;
-            var hadRing = b.classList.contains('fsc-ring');
-            var hadFix = b.classList.contains('fsc-ringfix');
-            var res = { after: 0, before: 0, el: 0 };
-
-            try {
-                reset(el);
-
-                // на мгновение (без отрисовки) отключаем свои правила и смотрим родные значения
-                b.classList.remove('fsc-ring');
-                b.classList.remove('fsc-ringfix');
-                b.classList.add('fsc-ringprobe');
-
-                res.el = layerScore(window.getComputedStyle(el), false);
-                res.before = layerScore(window.getComputedStyle(el, '::before'), true);
-                res.after = layerScore(window.getComputedStyle(el, '::after'), true);
-            } catch (e) {}
-
-            b.classList.remove('fsc-ringprobe');
-            if (hadRing) b.classList.add('fsc-ring');
-            if (hadFix) b.classList.add('fsc-ringfix');
-
-            // побеждает самая толстая рамка; при равенстве порядок ::after, ::before, сам элемент
-            var best = 'after';
-            var top = 0;
-
-            ['after', 'before', 'el'].forEach(function (k) {
-                if (res[k] > top + 0.5) {
-                    top = res[k];
-                    best = k;
-                }
-            });
-
-            if (top < 1.5) best = 'after';
-
-            if (main[type] !== best) {
-                main[type] = best;
-                buildCss();
-            }
-        }
-
-        // ---------- цвет теней главной рамки ----------
-
-        // внутренние тени (inset) убираем совсем, остальные перекрашиваем
-        function cleanShadow(sh) {
-            var colors = sh.match(/rgba?\([^)]*\)/g) || [];
-            var parts = sh.replace(/rgba?\([^)]*\)/g, '\u0001').split(',');
-            var out = [];
-
-            for (var i = 0; i < parts.length; i++) {
-                if (parts[i].indexOf('inset') !== -1) continue;
-                out.push(parts[i].replace('\u0001', colors[i] || '').replace(/^\s+|\s+$/g, ''));
-            }
-
-            return out.length ? out.join(', ') : 'none';
-        }
-
-        // В тени меняем только цветные части: тёмная тень для объёма остаётся как была
-        function recolor(shadow, hex) {
-            var rgb = rgbOf(hex);
-
-            return String(shadow).replace(/rgba?\(([^)]*)\)/g, function (m, inner) {
-                var p = inner.split(',').map(function (x) { return parseFloat(x); });
-
-                if (Math.max(p[0], p[1], p[2]) < 60) return m;
-
-                var a = (p.length > 3 && !isNaN(p[3])) ? p[3] : 1;
-                return 'rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + a + ')';
-            });
-        }
-
-        function reset(el) {
-            try {
-                el.style.removeProperty('box-shadow');
-                el.style.removeProperty('--fsc-ring-a');
-                el.style.removeProperty('--fsc-ring-b');
-                el.classList.remove('fsc-ring-a');
-                el.classList.remove('fsc-ring-b');
-            } catch (e) {}
-        }
-
-        function paint(el) {
-            var hex = chosen();
-            if (!hex) return;
-
-            try {
-                var m = main[typeOf(el)] || 'after';
-
-                if (m === 'el') {
-                    var sh = window.getComputedStyle(el).boxShadow;
-
-                    if (sh && sh !== 'none' && /rgba?\(/.test(sh)) {
-                        var r = recolor(cleanShadow(sh), hex);
-                        if (r !== sh) el.style.setProperty('box-shadow', r, 'important');
-                    }
-
-                    return;
-                }
-
-                var ps = m === 'before' ? '::before' : '::after';
-                var key = m === 'before' ? 'b' : 'a';
-                var psh = window.getComputedStyle(el, ps).boxShadow;
-
-                if (psh && psh !== 'none' && /rgba?\(/.test(psh)) {
-                    var pr = recolor(cleanShadow(psh), hex);
-
-                    if (pr !== psh) {
-                        el.style.setProperty('--fsc-ring-' + key, pr);
-                        el.classList.add('fsc-ring-' + key);
-                    }
-                }
-            } catch (e) {}
-        }
-
-        // цвет рамки как переменная на body: по ней работают правила
+        // цвет рамки как переменная на body: по ней работают правила из addStyles
         function apply() {
             var hex = chosen();
             var b = document.body;
             if (!b || !b.style) return;
 
-            // лишняя внутренняя рамка убирается всегда, цвет меняется только если он выбран
-            b.classList.add('fsc-ringfix');
+            b.classList.remove('fsc-ringfix');
 
             if (hex) {
                 b.style.setProperty('--fsc-ring', hex);
@@ -3410,41 +3204,14 @@
             }
         }
 
-        function tick() {
-            var cur = document.querySelector(SEL);
-            if (cur === lastEl) return;
-
-            timers.forEach(clearTimeout);
-            timers = [];
-
-            if (lastEl) reset(lastEl);
-            lastEl = cur;
-
-            if (!cur) return;
-
-            // первый раз для каждого вида списка определяем, какой слой главный
-            probe(cur, typeOf(cur));
-
-            if (!chosen()) return;
-
-            // тень может появляться с анимацией, поэтому проверяем несколько раз
-            [0, 150, 400].forEach(function (ms) {
-                timers.push(setTimeout(function () {
-                    if (lastEl === cur) paint(cur);
-                }, ms));
-            });
-        }
-
         function start() {
             if (started) return;
             started = true;
 
-            buildCss();
             apply();
-            setInterval(tick, 100);
         }
 
-        return { start: start, apply: apply, recolor: recolor, chosen: chosen, tick: tick, paint: paint, reset: reset };
+        return { start: start, apply: apply, chosen: chosen };
     })();
 
     // =====================================================================
