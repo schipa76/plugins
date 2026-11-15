@@ -223,6 +223,7 @@
             '.trailer-bg__frame video{width:100%;height:100%;object-fit:cover;background:#000;transform-origin:50% 50%;transition:transform .8s ease;}' +
             '.trailer-bg video::-webkit-media-controls,.trailer-bg video::-webkit-media-controls-start-playback-button,.trailer-bg video::-webkit-media-controls-overlay-play-button{display:none !important;-webkit-appearance:none;opacity:0;}' +
             '.fsc-bg-hidden{opacity:0 !important;transition:opacity .6s ease;}' +
+            '.fsc-bg-now{transition:none !important;}' +
             // фон карточки: свою картинку карточки прячем, показываем общий фон Lampa на весь экран
             'body.fsc-card-bg .full-start__background{opacity:0 !important;transition:none !important;}' +
             'body.fsc-card-bg .background{opacity:1 !important;visibility:visible !important;}' +
@@ -563,7 +564,7 @@
 
     function restoreBackdrop() {
         try {
-            $(hiddenBackdrops).removeClass('fsc-bg-hidden fsc-bg-clear');
+            $(hiddenBackdrops).removeClass('fsc-bg-hidden fsc-bg-clear fsc-bg-now');
         } catch (e) {}
         hiddenBackdrops = [];
     }
@@ -619,8 +620,15 @@
     var softLeft = false;
     var SOFT_PAGES = /torrent|online|lampac|rezka|filmix|showy|collaps|kinopub|alloha|hdvb|videocdn|mod/i;
 
-    function softLeave() {
+    function softLeave(keep) {
         softLeft = true;
+
+        // stopTrailer вернул родные картинки фона карточки: прячем их снова, иначе при возврате они мелькнут
+        if (keep && keep.length) {
+            hiddenBackdrops = keep;
+            $(keep).addClass('fsc-bg-hidden fsc-bg-clear fsc-bg-now');
+        }
+
         cardFixTimers.forEach(function (t) { clearTimeout(t); });
         cardFixTimers = [];
         $('#fsc-backdrop').css('visibility', 'hidden');
@@ -2945,6 +2953,7 @@
         var token = 0;
         var timer = null;
         var started = false;
+        var hideTimer = null; // отложенное скрытие: Lampa на секунду просит "пустой" фон при смене страниц
         var loader = null;    // загрузка новой картинки (при смене отменяем прошлую, чтобы очередь не росла)
         var loading = false;
 
@@ -3037,6 +3046,8 @@
         }
 
         function show(url) {
+            clearTimeout(hideTimer);
+
             if (!url) return hide();
 
             if (url === current) {
@@ -3113,9 +3124,18 @@
                 var origImmediately = bg.immediately;
 
                 bg.change = function (url) {
-                    // выключено или фон убирают: работает как в Lampa
-                    if (!url || !opt('fsc_fast_bg', true)) {
+                    // выключено - работает как в Lampa
+                    if (!opt('fsc_fast_bg', true)) {
                         hide();
+                        return origChange.apply(this, arguments);
+                    }
+
+                    // фон убирают: ждём, не придёт ли сразу новая картинка (при возврате на карточку
+                    // иначе на мгновение открывается родной фон Lampa)
+                    if (!url) {
+                        clearTimeout(timer);
+                        clearTimeout(hideTimer);
+                        hideTimer = setTimeout(hide, 300);
                         return origChange.apply(this, arguments);
                     }
 
@@ -3126,8 +3146,15 @@
                 };
 
                 bg.immediately = function (url) {
-                    if (!url || !opt('fsc_fast_bg', true)) {
+                    if (!opt('fsc_fast_bg', true)) {
                         hide();
+                        return origImmediately.apply(this, arguments);
+                    }
+
+                    if (!url) {
+                        clearTimeout(timer);
+                        clearTimeout(hideTimer);
+                        hideTimer = setTimeout(hide, 300);
                         return origImmediately.apply(this, arguments);
                     }
 
@@ -3352,9 +3379,11 @@
                 var type = ev && ev.type;
 
                 if (comp && comp !== 'full' && (type === 'start' || type === 'create' || type === 'destroy' || type === 'archive')) {
+                    var keepBg = hiddenBackdrops.slice();
+
                     stopTrailer();
 
-                    if (SOFT_PAGES.test(String(comp)) && document.body.classList.contains('fsc-card-bg')) softLeave();
+                    if (SOFT_PAGES.test(String(comp)) && document.body.classList.contains('fsc-card-bg')) softLeave(keepBg);
                     else restoreCardFix();
                 }
 
