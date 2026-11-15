@@ -638,7 +638,7 @@
 
         cardFixTimers.forEach(function (t) { clearTimeout(t); });
         cardFixTimers = [];
-        $('#fsc-backdrop').css('visibility', 'hidden');
+        $('#fsc-backdrop').css({ visibility: 'hidden', transition: 'none', opacity: 1 });
     }
 
     function softReturn() {
@@ -647,7 +647,13 @@
         var bd = $('#fsc-backdrop');
 
         if (bd.length) {
-            bd.css('visibility', '');
+            // плавное появление: без резкого скачка яркости при возврате
+            bd.css({ transition: 'none', opacity: 0, visibility: '' });
+
+            requestAnimationFrame(function () {
+                bd.css({ transition: 'opacity .25s ease', opacity: 1 });
+            });
+
             runCardFixTimers();
         } else {
             resumeCard();
@@ -3035,8 +3041,9 @@
             dim = el.children[2];
             var scr = screen();
 
-            if (scr === 'full') dim.style.opacity = '0';
-            else dim.style.opacity = String(1 - brightness());
+            // на странице фильма фон закрывает свой слой без затемнения, поэтому яркость здесь не меняем:
+            // иначе при возврате на карточку светлые участки на долю секунды становятся ярче
+            dim.style.opacity = String(1 - brightness());
 
             el.classList.remove('fsc-soft');
 
@@ -3056,6 +3063,10 @@
             clearTimeout(hideTimer);
 
             if (!url) return hide();
+
+            // та же картинка в другом размере (Lampa на возврате просит свой адрес): не меняем,
+            // иначе на мгновение меняется резкость
+            if (current && url !== current && imgTail(url) === imgTail(current) && imgTail(url)) url = current;
 
             if (url === current) {
                 var cur = document.getElementById(ID);
