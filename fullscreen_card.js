@@ -618,7 +618,14 @@
     // Переход с карточки на страницы торрентов и онлайна: состояние карточки не сбрасываем, только прячем
     // свой слой фона. Так при возврате родная картинка Lampa (со сдвигом) не успевает промелькнуть.
     var softLeft = false;
-    var SOFT_PAGES = /torrent|online|lampac|rezka|filmix|showy|collaps|kinopub|alloha|hdvb|videocdn|mod/i;
+    // Названия страниц онлайна у разных плагинов разные, поэтому список "мягких" страниц не перечисляем:
+    // мягко уходим на любую страницу, кроме основных разделов Lampa (там состояние карточки сбрасываем).
+    var HARD_PAGES = /^(main|category|category_full|catalog|favorite|bookmarks|mytorrents|settings|search|person|actor|company|collections|collection|feed|timetable|relise|subscribes|last|mytorrents|tv|live|cub)/i;
+
+    function isSoftPage(comp) {
+        comp = String(comp || '');
+        return !!comp && comp !== 'full' && !HARD_PAGES.test(comp);
+    }
 
     function softLeave(keep) {
         softLeft = true;
@@ -3383,7 +3390,7 @@
 
                     stopTrailer();
 
-                    if (SOFT_PAGES.test(String(comp)) && document.body.classList.contains('fsc-card-bg')) softLeave(keepBg);
+                    if (isSoftPage(comp) && document.body.classList.contains('fsc-card-bg')) softLeave(keepBg);
                     else restoreCardFix();
                 }
 
@@ -3429,8 +3436,11 @@
                     return;
                 }
 
+                // между страницами Lampa на мгновение может не отдавать активную: ничего не сбрасываем
+                if (softLeft && !act) return;
+
                 // страницы торрентов и онлайна: состояние карточки сохраняем до возврата
-                if (softLeft && act && SOFT_PAGES.test(String(act.component))) {
+                if (softLeft && act && isSoftPage(act.component)) {
                     if (document.getElementById(LAYER_ID)) stopTrailer();
                     if (act.component === 'torrents') MainBg.ensureTorrents();
                     return;
