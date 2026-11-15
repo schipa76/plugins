@@ -340,17 +340,23 @@
         var cache = lsGet(LS.cache, null);
         if (!force && cache && cache.key === key && Date.now() - cache.t < CACHE_TTL) return Promise.resolve(cache.data);
 
-        var base = 'latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto';
-        var wUrl = 'https://api.open-meteo.com/v1/forecast?' + base + '&wind_speed_unit=ms&forecast_days=7' +
+        var base = 'latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto&wind_speed_unit=ms';
+        // Один большой ответ на ~50 КБ у некоторых провайдеров зависает на полпути, поэтому
+        // запрос разбит на два маленьких: «сейчас + ближайшие часы» и «дни».
+        var urlA = 'https://api.open-meteo.com/v1/forecast?' + base + '&forecast_hours=26' +
             '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
-            '&hourly=temperature_2m,precipitation_probability,weather_code,is_day,pressure_msl,visibility,dew_point_2m,uv_index' +
+            '&hourly=temperature_2m,precipitation_probability,weather_code,is_day,pressure_msl,visibility,dew_point_2m,uv_index';
+        var urlB = 'https://api.open-meteo.com/v1/forecast?' + base + '&forecast_days=7' +
             '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,daylight_duration';
-        var aUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?' + base + '&current=european_aqi,pm2_5,pm10';
+        var aUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto&current=european_aqi,pm2_5,pm10';
 
         var aqP = http(aUrl, 5000).catch(function () { return null; });
 
-        return http(wUrl, 15000).then(function (wj) {
-            if (!wj || !wj.current) throw new Error('пустой ответ погоды');
+        return Promise.all([httpRetry(urlA, 10000, 2), httpRetry(urlB, 10000, 2)]).then(function (r) {
+            var wj = r[0], dj = r[1];
+            if (!wj || !wj.current || !wj.hourly) throw new Error('пустой ответ погоды');
+            if (!dj || !dj.daily) throw new Error('пустой ответ прогноза по дням');
+            wj.daily = dj.daily;
             return aqP.then(function (aj) {
                 var data = { w: wj, aq: aj && aj.current ? aj.current : null, t: Date.now() };
                 lsSet(LS.cache, { key: key, t: Date.now(), data: data });
@@ -359,6 +365,13 @@
         }).catch(function (err) {
             if (cache && cache.key === key && cache.data) { cache.data.stale = true; return cache.data; }
             throw err;
+        });
+    }
+
+    function httpRetry(url, timeout, tries) {
+        return http(url, timeout).catch(function (e) {
+            if (tries > 1) return httpRetry(url, timeout, tries - 1);
+            throw e;
         });
     }
 
