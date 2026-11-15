@@ -230,24 +230,74 @@
     /*  Сеть                                                               */
     /* ------------------------------------------------------------------ */
 
-    function http(url) {
+    var DBG = [];
+    function dbg(msg) { DBG.push(msg); if (DBG.length > 12) DBG.shift(); }
+
+    // Запрос сразу тремя способами (родной сетевой модуль Lampa, ajax Lampa, fetch):
+    // побеждает первый, у кого пришёл нормальный JSON. Всегда завершается по таймауту.
+    function http(url, timeout) {
+        timeout = timeout || 12000;
+        var short = url.replace(/^https?:\/\//, '').split('?')[0];
         return new Promise(function (resolve, reject) {
-            function viaFetch() {
-                try {
-                    fetch(url).then(function (r) { return r.json(); }).then(resolve).catch(reject);
-                } catch (e) { reject(e); }
+            var settled = false, fails = 0, errs = [], channels = [], tm;
+
+            function good(j, via) {
+                if (settled) return;
+                if (typeof j === 'string') {
+                    try { j = JSON.parse(j); } catch (e) { return bad(via + ': не JSON'); }
+                }
+                if (!j || typeof j !== 'object') return bad(via + ': пусто');
+                settled = true; clearTimeout(tm);
+                dbg('OK ' + short + ' (' + via + ')');
+                resolve(j);
             }
-            try {
-                if (window.Lampa && Lampa.Reguest) {
-                    var net = new Lampa.Reguest();
-                    net.silent(url, function (j) {
-                        if (typeof j === 'string') {
-                            try { j = JSON.parse(j); } catch (e) { return viaFetch(); }
-                        }
-                        resolve(j);
-                    }, function () { viaFetch(); }, false, { dataType: 'json', timeout: 15000 });
-                } else viaFetch();
-            } catch (e) { viaFetch(); }
+            function bad(msg) {
+                errs.push(msg);
+                fails++;
+                if (!settled && fails >= channels.length) {
+                    settled = true; clearTimeout(tm);
+                    dbg('FAIL ' + short + ': ' + errs.join(', '));
+                    reject(new Error(short + ' — ' + errs.join(', ')));
+                }
+            }
+
+            if (window.Lampa && Lampa.Reguest) {
+                channels.push(function () {
+                    var n = new Lampa.Reguest();
+                    if (typeof n.native !== 'function') throw new Error('нет native');
+                    n.native(url, function (j) { good(j, 'native'); }, function () { bad('native: ошибка'); }, false, { dataType: 'json', timeout: timeout });
+                });
+                channels.push(function () {
+                    var n = new Lampa.Reguest();
+                    n.silent(url, function (j) { good(j, 'ajax'); }, function () { bad('ajax: ошибка'); }, false, { dataType: 'json', timeout: timeout });
+                });
+            }
+            channels.push(function () {
+                fetch(url).then(function (r) { return r.json(); }).then(function (j) { good(j, 'fetch'); })
+                    .catch(function (e) { bad('fetch: ' + (e && e.message ? e.message : 'ошибка')); });
+            });
+
+            tm = setTimeout(function () {
+                if (settled) return;
+                settled = true;
+                dbg('TIMEOUT ' + short);
+                reject(new Error(short + ' — нет ответа за ' + Math.round(timeout / 1000) + ' с'));
+            }, timeout);
+
+            channels.forEach(function (run) {
+                try { run(); } catch (e) { bad(e && e.message ? e.message : 'ошибка'); }
+            });
+        });
+    }
+
+    // первый успешный из нескольких промисов
+    function firstOf(list) {
+        return new Promise(function (resolve, reject) {
+            var left = list.length, done = false;
+            list.forEach(function (p) {
+                p.then(function (v) { if (!done) { done = true; resolve(v); } })
+                    .catch(function (e) { left--; if (left === 0 && !done) reject(e); });
+            });
         });
     }
 
@@ -256,20 +306,20 @@
         if (cached && Date.now() - cached.t < 24 * 3600 * 1000) return Promise.resolve(cached.loc);
 
         function save(loc) { lsSet(LS.ip, { t: Date.now(), loc: loc }); return loc; }
-        return http('https://ipwho.is/?lang=ru').then(function (j) {
-            if (j && j.success !== false && j.latitude) return save({ name: j.city || j.region || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true });
-            throw new Error('ipwho');
-        }).catch(function () {
-            return http('https://ipapi.co/json/').then(function (j) {
-                if (j && j.latitude) return save({ name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true });
+        return firstOf([
+            http('https://ipwho.is/?lang=ru', 6000).then(function (j) {
+                if (j && j.success !== false && j.latitude) return { name: j.city || j.region || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true };
+                throw new Error('ipwho');
+            }),
+            http('https://ipapi.co/json/', 6000).then(function (j) {
+                if (j && j.latitude) return { name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true };
                 throw new Error('ipapi');
-            });
-        }).catch(function () {
-            return http('https://get.geojs.io/v1/ip/geo.json').then(function (j) {
-                if (j && j.latitude) return save({ name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true });
+            }),
+            http('https://get.geojs.io/v1/ip/geo.json', 6000).then(function (j) {
+                if (j && j.latitude) return { name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true };
                 throw new Error('geojs');
-            });
-        }).catch(function () {
+            })
+        ]).then(save).catch(function () {
             return { name: 'Москва', lat: 55.7558, lon: 37.6173, auto: true, fallback: true };
         });
     }
@@ -281,7 +331,7 @@
     }
 
     function geocode(name) {
-        return http('https://geocoding-api.open-meteo.com/v1/search?count=10&language=ru&format=json&name=' + encodeURIComponent(name))
+        return http('https://geocoding-api.open-meteo.com/v1/search?count=10&language=ru&format=json&name=' + encodeURIComponent(name), 10000)
             .then(function (j) { return (j && j.results) || []; });
     }
 
@@ -297,22 +347,25 @@
             '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,daylight_duration';
         var aUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?' + base + '&current=european_aqi,pm2_5,pm10';
 
-        return Promise.all([
-            http(wUrl),
-            http(aUrl).catch(function () { return null; })
-        ]).then(function (r) {
-            if (!r[0] || !r[0].current) throw new Error('bad weather response');
-            var data = { w: r[0], aq: r[1] && r[1].current ? r[1].current : null, t: Date.now() };
-            lsSet(LS.cache, { key: key, t: Date.now(), data: data });
-            return data;
+        var aqP = http(aUrl, 5000).catch(function () { return null; });
+
+        return http(wUrl, 15000).then(function (wj) {
+            if (!wj || !wj.current) throw new Error('пустой ответ погоды');
+            return aqP.then(function (aj) {
+                var data = { w: wj, aq: aj && aj.current ? aj.current : null, t: Date.now() };
+                lsSet(LS.cache, { key: key, t: Date.now(), data: data });
+                return data;
+            });
         }).catch(function (err) {
-            if (cache && cache.key === key) { cache.data.stale = true; return cache.data; }
+            if (cache && cache.key === key && cache.data) { cache.data.stale = true; return cache.data; }
             throw err;
         });
     }
 
-    function getData(force) {
+    function getData(force, stage) {
+        if (stage) stage('Определяю город…');
         return getLocation().then(function (loc) {
+            if (stage) stage('Загружаю погоду для: ' + loc.name + '…');
             return loadWeather(loc, force).then(function (data) { return { loc: loc, data: data }; });
         });
     }
@@ -453,7 +506,7 @@
         out += '<div class="wp-top">' +
             '<div class="wp-btn wp-f selector" data-act="city">' + SVG_PIN + '<b>' + loc.name + '</b><small>' + (loc.auto ? 'авто · ' : '') + 'сменить</small></div>' +
             '<div class="wp-btn wp-f selector" data-act="refresh">' + SVG_REF + '<span>Обновить</span></div>' +
-            '<div class="wp-upd">' + (pack.stale ? 'Нет связи, показаны старые данные · ' : '') + 'Обновлено в ' + pad(upd.getHours()) + ':' + pad(upd.getMinutes()) + ' · Open-Meteo</div>' +
+            '<div class="wp-upd">' + (loc.fallback ? 'Город не определился — показана Москва, выберите свой · ' : '') + (pack.stale ? 'Нет связи, показаны старые данные · ' : '') + 'Обновлено в ' + pad(upd.getHours()) + ':' + pad(upd.getMinutes()) + ' · Open-Meteo</div>' +
             '</div>';
 
         /* главный блок */
@@ -633,6 +686,7 @@
         rec.unshift({ name: c.name, lat: c.lat, lon: c.lon, sub: c.sub || '' });
         lsSet(LS.recent, rec.slice(0, 6));
         lsSet(LS.cache, null);
+        syncCitySel();
     }
 
     function searchCity(back, done) {
@@ -681,7 +735,7 @@
             title: 'Город',
             items: items,
             onSelect: function (a) {
-                if (a.act === 'auto') { lsSet(LS.city, null); lsSet(LS.ip, null); lsSet(LS.cache, null); done(); }
+                if (a.act === 'auto') { lsSet(LS.city, null); lsSet(LS.ip, null); lsSet(LS.cache, null); syncCitySel(); done(); }
                 else if (a.act === 'search') { searchCity(back, done); }
                 else { saveCity(a.city); done(); }
             },
@@ -697,7 +751,8 @@
         if (document.getElementById('weather-plus-style')) return;
         var css = [
             '.wp{position:relative;height:100%;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)}',
-            '.wp-bg{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;background:#1c2f4a}',
+            '.wp-bg{position:absolute;left:0;top:0;right:0;bottom:0;background:#1c2f4a;opacity:var(--wp-a,.7)}',
+            '.wp-fx{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none}',
             '.wp-bg:after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;background:radial-gradient(60% 50% at 85% 0%,rgba(255,255,255,.18),transparent 70%)}',
             '.wp .scroll{position:relative;z-index:1}',
             '.wp-body{padding:1em 3.2em 3em 3.2em}',
@@ -781,6 +836,7 @@
             '.wp-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;font-size:1.3em;opacity:.9}',
             '.wp-loading i{width:3em;height:3em;border-radius:50%;border:.28em solid rgba(255,255,255,.25);border-top-color:#fff;margin-bottom:1em;animation:wpspin 1s linear infinite}',
             '.wp-err{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;font-size:1.3em;text-align:center}',
+            '.wp-dbg{max-width:80%;font-size:.6em;opacity:.7;margin-top:.8em;line-height:1.4;word-break:break-all}',
             '.wp-err .wp-btn{margin:1.2em 0 0 0}',
 
             /* иконки */
@@ -806,7 +862,7 @@
             '@keyframes wpflash{0%,92%,96%,100%{opacity:0}93%{opacity:.35}94%{opacity:.05}95%{opacity:.25}}',
 
             /* виджет в шапке */
-            '.wp-head{display:flex;align-items:center}',
+            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;padding:.2em .7em!important;white-space:nowrap}',
             '.wp-head svg{width:1.8em;height:1.8em;margin-right:.35em}',
             '.wp-head span{font-weight:600;font-size:1.1em}'
         ].join('\n');
@@ -820,10 +876,17 @@
     /*  Компонент страницы                                                 */
     /* ------------------------------------------------------------------ */
 
+    function bgAlpha() {
+        var v = parseInt(opt('weather_plus_bgalpha', '70'), 10);
+        if (isNaN(v)) v = 70;
+        return clamp(v, 20, 100) / 100;
+    }
+
     function WeatherPage(object) {
         var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
         var html = $('<div class="wp"></div>');
         var bg = $('<div class="wp-bg"></div>');
+        var fx = $('<div class="wp-fx"></div>');
         var body = $('<div class="wp-body"></div>');
         var self = this;
         var last = null;
@@ -842,10 +905,11 @@
             Lampa.Controller.toggle('content');
         }
         function showLoading() {
-            body.html('<div class="wp-loading"><i></i><div>Загружаю погоду…</div></div>');
+            body.html('<div class="wp-loading"><i></i><div class="wp-stage">Загружаю погоду…</div></div>');
         }
+        function stage(t) { body.find('.wp-stage').text(t); }
         function showError(msg) {
-            body.html('<div class="wp-err"><div>Не удалось получить погоду</div><div style="opacity:.6;font-size:.7em;margin-top:.4em">' + (msg || '') + '</div>' +
+            body.html('<div class="wp-err"><div>Не удалось получить погоду</div><div class="wp-dbg">' + (msg || '') + '<br>' + DBG.join('<br>') + '</div>' +
                 '<div class="wp-btn wp-f selector" data-act="refresh">' + SVG_REF + '<span>Повторить</span></div>' +
                 '<div class="wp-btn wp-f selector" data-act="city" style="margin-top:.8em">' + SVG_PIN + '<span>Выбрать город</span></div></div>');
             bindItems();
@@ -884,11 +948,12 @@
         this.load = function (force) {
             showLoading();
             last = null;
-            getData(force).then(function (res) {
+            getData(force, stage).then(function (res) {
                 if (dead) return;
                 current = res;
                 var b = build(res.loc, res.data);
-                bg.css('background', b.theme).html(opt('weather_plus_anim', true) ? b.fx : '');
+                bg.css('background', b.theme);
+                fx.html(opt('weather_plus_anim', true) ? b.fx : '');
                 body.html(b.html);
                 bindItems();
                 finish();
@@ -901,10 +966,17 @@
 
         this.create = function () {
             injectStyle();
+            try { html[0].style.setProperty('--wp-a', bgAlpha()); } catch (e) { }
             html.append(bg);
+            html.append(fx);
             html.append(scroll.render());
             scroll.append(body);
             this.load(false);
+            // сразу убираем системный индикатор Lampa: показываем свой и даём работать кнопке «Назад»
+            setTimeout(function () {
+                if (dead) return;
+                try { self.activity.loader(false); self.activity.toggle(); } catch (e) { }
+            }, 0);
             return this.render();
         };
 
@@ -947,10 +1019,22 @@
     /*  Виджет в шапке                                                     */
     /* ------------------------------------------------------------------ */
 
-    var headEl = null;
+    var headEl = null, headTries = 0;
 
     function openPage() {
         Lampa.Activity.push({ url: '', title: 'Погода+', component: 'weather_plus', page: 1 });
+    }
+
+    function mountHead() {
+        if (headEl && $.contains(document.body, headEl[0])) return true;
+        var tm = $('.head__time').first();
+        var host = $('.head__actions').first();
+        if (!tm.length && !host.length) return false;
+        headEl = $('<div class="head__action selector wp-head"></div>');
+        headEl.on('hover:enter', openPage);
+        if (tm.length) tm.before(headEl);
+        else host.prepend(headEl);
+        return true;
     }
 
     function updateHeadFrom(res) {
@@ -959,17 +1043,14 @@
             return;
         }
         try {
-            var c = res.data.w.current, k = wmo(c.weather_code)[1];
-            var inner = icon(k, c.is_day === 1) + '<span>' + fmtT(c.temperature_2m) + '</span>';
-            if (!headEl || !headEl.closest('body').length) {
-                headEl = $('<div class="head__action selector wp-head"></div>');
-                headEl.on('hover:enter', openPage);
-                var tm = $('.head__time').first();
-                if (tm.length) tm.before(headEl);
-                else $('.head__actions').first().prepend(headEl);
+            if (!mountHead()) {
+                // шапка могла ещё не отрисоваться — пробуем позже
+                if (headTries++ < 12) setTimeout(function () { updateHeadFrom(res); }, 2500);
+                return;
             }
-            headEl.html(inner);
-        } catch (e) { }
+            var c = res.data.w.current, k = wmo(c.weather_code)[1];
+            headEl.html(icon(k, c.is_day === 1) + '<span>' + fmtT(c.temperature_2m) + '</span>');
+        } catch (e) { dbg('head: ' + (e && e.message)); }
     }
 
     function updateHead(force) {
@@ -977,35 +1058,89 @@
             if (headEl) { headEl.remove(); headEl = null; }
             return;
         }
-        getData(!!force).then(updateHeadFrom).catch(function () { });
+        getData(!!force).then(updateHeadFrom).catch(function (e) { dbg('head load: ' + (e && e.message)); });
     }
 
     /* ------------------------------------------------------------------ */
     /*  Меню и настройки                                                   */
     /* ------------------------------------------------------------------ */
 
+    var SVG_MENU = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.36 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.64-4.96z"/></svg>';
+
     function addMenu() {
         if ($('.menu [data-action="weather_plus"]').length) return;
         var btn = $('<li class="menu__item selector" data-action="weather_plus">' +
-            '<div class="menu__ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.36 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.64-4.96z"/></svg></div>' +
+            '<div class="menu__ico">' + SVG_MENU + '</div>' +
             '<div class="menu__text">Погода+</div></li>');
         btn.on('hover:enter', openPage);
         $('.menu .menu__list').eq(0).append(btn);
     }
 
+    function settingsBack() {
+        try { Lampa.Controller.toggle('settings_component'); } catch (e) { }
+    }
+
+    function onCityPicked() {
+        syncCitySel();
+        updateHead(true);
+    }
+
+    function onCitySetting(v) {
+        if (v === undefined || v === null) v = Lampa.Storage.get('weather_plus_city_sel', 'auto');
+        if (v === 'auto') {
+            lsSet(LS.city, null); lsSet(LS.ip, null); lsSet(LS.cache, null);
+            updateHead(true);
+        } else if (v === 'search') {
+            searchCity(settingsBack, onCityPicked);
+        } else if (v === 'custom') {
+            var sv = lsGet(LS.city, null);
+            if (!sv || isPopular(sv)) searchCity(settingsBack, onCityPicked);
+        } else if (/^p\d+$/.test(v)) {
+            var p = POPULAR[+v.substring(1)];
+            if (p) { saveCity({ name: p[0], lat: p[1], lon: p[2] }); updateHead(true); }
+        }
+    }
+
+    function isPopular(c) {
+        for (var i = 0; i < POPULAR.length; i++) if (POPULAR[i][0] === c.name) return i;
+        return false;
+    }
+
+    function syncCitySel() {
+        try {
+            var c = lsGet(LS.city, null), val = 'auto';
+            if (c && c.lat) {
+                var pi = isPopular(c);
+                val = pi === false ? 'custom' : 'p' + pi;
+            }
+            Lampa.Storage.set('weather_plus_city_sel', val);
+        } catch (e) { }
+    }
+
     function addSettings() {
         try {
             if (!Lampa.SettingsApi) return;
-            Lampa.SettingsApi.addComponent({
+            Lampa.SettingsApi.addComponent({ component: 'weather_plus', name: 'Погода+', icon: SVG_MENU });
+
+            var cityValues = { auto: 'Автоматически (по IP)', search: 'Найти по названию…', custom: 'Свой город (из поиска)' };
+            POPULAR.forEach(function (p, i) { cityValues['p' + i] = p[0]; });
+
+            Lampa.SettingsApi.addParam({
                 component: 'weather_plus',
-                name: 'Погода+',
-                icon: '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.36 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.64-4.96z"/></svg>'
+                param: { name: 'weather_plus_city_sel', type: 'select', values: cityValues, 'default': 'auto' },
+                field: { name: 'Город', description: 'Выберите из списка или найдите свой через «Найти по названию…»' },
+                onChange: onCitySetting
             });
             Lampa.SettingsApi.addParam({
                 component: 'weather_plus',
                 param: { name: 'weather_plus_head', type: 'trigger', 'default': true },
                 field: { name: 'Температура в шапке', description: 'Показывать погоду рядом с часами' },
                 onChange: function () { updateHead(false); }
+            });
+            Lampa.SettingsApi.addParam({
+                component: 'weather_plus',
+                param: { name: 'weather_plus_bgalpha', type: 'select', values: { '100': 'Нет', '85': 'Слабая', '70': 'Средняя', '55': 'Сильная', '40': 'Очень сильная' }, 'default': '70' },
+                field: { name: 'Прозрачность фона', description: 'Насколько просвечивает фон Lampa. Применится при следующем открытии страницы' }
             });
             Lampa.SettingsApi.addParam({
                 component: 'weather_plus',
@@ -1022,7 +1157,7 @@
                 param: { name: 'weather_plus_press', type: 'select', values: { mm: 'мм рт. ст.', hpa: 'гПа' }, 'default': 'mm' },
                 field: { name: 'Давление', description: 'Единицы измерения' }
             });
-        } catch (e) { }
+        } catch (e) { dbg('settings: ' + (e && e.message)); }
     }
 
     function init() {
@@ -1030,7 +1165,7 @@
         injectStyle();
         addMenu();
         addSettings();
-        setTimeout(function () { updateHead(false); }, 3000);
+        setTimeout(function () { updateHead(false); }, 1500);
         setInterval(function () { updateHead(true); }, 15 * 60 * 1000);
     }
 
