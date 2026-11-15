@@ -614,6 +614,31 @@
     var cardFix = { els: [], props: [], seen: {} };
     var cardFixTimers = [];
 
+    // Переход с карточки на страницы торрентов и онлайна: состояние карточки не сбрасываем, только прячем
+    // свой слой фона. Так при возврате родная картинка Lampa (со сдвигом) не успевает промелькнуть.
+    var softLeft = false;
+    var SOFT_PAGES = /torrent|online|lampac|rezka|filmix|showy|collaps|kinopub|alloha|hdvb|videocdn|mod/i;
+
+    function softLeave() {
+        softLeft = true;
+        cardFixTimers.forEach(function (t) { clearTimeout(t); });
+        cardFixTimers = [];
+        $('#fsc-backdrop').css('visibility', 'hidden');
+    }
+
+    function softReturn() {
+        softLeft = false;
+
+        var bd = $('#fsc-backdrop');
+
+        if (bd.length) {
+            bd.css('visibility', '');
+            runCardFixTimers();
+        } else {
+            resumeCard();
+        }
+    }
+
     // прозрачность цвета: 'rgba(0, 0, 0, 0.5)' -> 0.5, 'rgb(...)' -> 1, 'transparent' -> 0
     function alphaOf(c) {
         if (!c || c === 'transparent') return 0;
@@ -635,6 +660,7 @@
     }
 
     function restoreCardFix() {
+        softLeft = false;
         cardFixTimers.forEach(function (t) { clearTimeout(t); });
         cardFixTimers = [];
 
@@ -3327,12 +3353,15 @@
 
                 if (comp && comp !== 'full' && (type === 'start' || type === 'create' || type === 'destroy' || type === 'archive')) {
                     stopTrailer();
-                    restoreCardFix();
+
+                    if (SOFT_PAGES.test(String(comp)) && document.body.classList.contains('fsc-card-bg')) softLeave();
+                    else restoreCardFix();
                 }
 
                 // вернулись на карточку: сразу возвращаем свой фон
-                if (comp === 'full' && type === 'start' && !document.body.classList.contains('fsc-card-bg')) {
-                    resumeCard();
+                if (comp === 'full' && type === 'start') {
+                    if (softLeft) softReturn();
+                    else if (!document.body.classList.contains('fsc-card-bg')) resumeCard();
                 }
             });
         } catch (err) {}
@@ -3366,7 +3395,15 @@
                 var act = Lampa.Activity.active();
 
                 if (act && act.component === 'full') {
-                    if (!document.body.classList.contains('fsc-card-bg')) resumeCard();
+                    if (softLeft) softReturn();
+                    else if (!document.body.classList.contains('fsc-card-bg')) resumeCard();
+                    return;
+                }
+
+                // страницы торрентов и онлайна: состояние карточки сохраняем до возврата
+                if (softLeft && act && SOFT_PAGES.test(String(act.component))) {
+                    if (document.getElementById(LAYER_ID)) stopTrailer();
+                    if (act.component === 'torrents') MainBg.ensureTorrents();
                     return;
                 }
 
