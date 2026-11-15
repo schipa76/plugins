@@ -620,6 +620,7 @@
     // Переход с карточки на страницы торрентов и онлайна: состояние карточки не сбрасываем, только прячем
     // свой слой фона. Так при возврате родная картинка Lampa (со сдвигом) не успевает промелькнуть.
     var softLeft = false;
+    var softReturnAt = 0;
     // Названия страниц онлайна у разных плагинов разные, поэтому список "мягких" страниц не перечисляем:
     // мягко уходим на любую страницу, кроме основных разделов Lampa (там состояние карточки сбрасываем).
     var HARD_PAGES = /^(main|category|category_full|catalog|favorite|bookmarks|mytorrents|settings|search|person|actor|company|collections|collection|feed|timetable|relise|subscribes|last|mytorrents|tv|live|cub)/i;
@@ -654,6 +655,7 @@
 
     function softReturn() {
         softLeft = false;
+        softReturnAt = Date.now();
 
         var bd = $('#fsc-backdrop');
 
@@ -3402,11 +3404,17 @@
                 var type = ev && ev.type;
 
                 if (comp && comp !== 'full' && (type === 'start' || type === 'create' || type === 'destroy' || type === 'archive')) {
+                    var soft = isSoftPage(comp) && document.body.classList.contains('fsc-card-bg');
+
+                    // Закрывающаяся страница торрентов/онлайна шлёт свои события уже после возврата на карточку:
+                    // тогда слой фона снова притемнялся на долю секунды. Такие события игнорируем.
+                    if (soft && (type === 'destroy' || type === 'archive' || Date.now() - softReturnAt < 1200)) return;
+
                     var keepBg = hiddenBackdrops.slice();
 
                     stopTrailer();
 
-                    if (isSoftPage(comp) && document.body.classList.contains('fsc-card-bg')) softLeave(keepBg);
+                    if (soft) softLeave(keepBg);
                     else restoreCardFix();
                 }
 
