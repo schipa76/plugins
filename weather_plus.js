@@ -26,14 +26,14 @@
     var CACHE_TTL = 10 * 60 * 1000;
 
     var POPULAR = [
-        ['Москва', 55.7558, 37.6173], ['Санкт-Петербург', 59.9343, 30.3351],
-        ['Новосибирск', 55.0084, 82.9357], ['Екатеринбург', 56.8389, 60.6057],
-        ['Казань', 55.7887, 49.1221], ['Нижний Новгород', 56.2965, 43.9361],
-        ['Самара', 53.1959, 50.1002], ['Ростов-на-Дону', 47.2357, 39.7015],
-        ['Краснодар', 45.0355, 38.9753], ['Сочи', 43.6028, 39.7342],
-        ['Уфа', 54.7388, 55.9721], ['Красноярск', 56.0153, 92.8932],
-        ['Владивосток', 43.1155, 131.8855], ['Калининград', 54.7104, 20.4522],
-        ['Минск', 53.9006, 27.5590], ['Алматы', 43.2220, 76.8512]
+        ['Москва', 55.7558, 37.6173, 'Europe/Moscow'], ['Санкт-Петербург', 59.9343, 30.3351, 'Europe/Moscow'],
+        ['Новосибирск', 55.0084, 82.9357, 'Asia/Novosibirsk'], ['Екатеринбург', 56.8389, 60.6057, 'Asia/Yekaterinburg'],
+        ['Казань', 55.7887, 49.1221, 'Europe/Moscow'], ['Нижний Новгород', 56.2965, 43.9361, 'Europe/Moscow'],
+        ['Самара', 53.1959, 50.1002, 'Europe/Samara'], ['Ростов-на-Дону', 47.2357, 39.7015, 'Europe/Moscow'],
+        ['Краснодар', 45.0355, 38.9753, 'Europe/Moscow'], ['Сочи', 43.6028, 39.7342, 'Europe/Moscow'],
+        ['Уфа', 54.7388, 55.9721, 'Asia/Yekaterinburg'], ['Красноярск', 56.0153, 92.8932, 'Asia/Krasnoyarsk'],
+        ['Владивосток', 43.1155, 131.8855, 'Asia/Vladivostok'], ['Калининград', 54.7104, 20.4522, 'Europe/Kaliningrad'],
+        ['Минск', 53.9006, 27.5590, 'Europe/Minsk'], ['Алматы', 43.2220, 76.8512, 'Asia/Almaty']
     ];
 
     /* ------------------------------------------------------------------ */
@@ -308,19 +308,19 @@
         function save(loc) { lsSet(LS.ip, { t: Date.now(), loc: loc }); return loc; }
         return firstOf([
             http('https://ipwho.is/?lang=ru', 6000).then(function (j) {
-                if (j && j.success !== false && j.latitude) return { name: j.city || j.region || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true };
+                if (j && j.success !== false && j.latitude) return { name: j.city || j.region || 'Мой город', lat: +j.latitude, lon: +j.longitude, tz: j.timezone && j.timezone.id, auto: true };
                 throw new Error('ipwho');
             }),
             http('https://ipapi.co/json/', 6000).then(function (j) {
-                if (j && j.latitude) return { name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true };
+                if (j && j.latitude) return { name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, tz: j.timezone, auto: true };
                 throw new Error('ipapi');
             }),
             http('https://get.geojs.io/v1/ip/geo.json', 6000).then(function (j) {
-                if (j && j.latitude) return { name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, auto: true };
+                if (j && j.latitude) return { name: j.city || 'Мой город', lat: +j.latitude, lon: +j.longitude, tz: j.timezone, auto: true };
                 throw new Error('geojs');
             })
         ]).then(save).catch(function () {
-            return { name: 'Москва', lat: 55.7558, lon: 37.6173, auto: true, fallback: true };
+            return { name: 'Москва', lat: 55.7558, lon: 37.6173, tz: 'Europe/Moscow', auto: true, fallback: true };
         });
     }
 
@@ -335,30 +335,109 @@
             .then(function (j) { return (j && j.results) || []; });
     }
 
-    function loadWeather(loc, force) {
+    /* --- источники погоды: Open-Meteo напрямую -> MET Norway -> Open-Meteo через прокси --- */
+
+    var SRC_KEY = 'weather_plus_src';
+    var PROXIES = [
+        function (u) { return 'https://corsproxy.io/?url=' + encodeURIComponent(u); },
+        function (u) { return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u); },
+        function (u) { return 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u); }
+    ];
+
+    function omUrls(loc) {
+        var base = 'latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto&wind_speed_unit=ms';
+        return {
+            a: 'https://api.open-meteo.com/v1/forecast?' + base + '&forecast_hours=26' +
+                '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
+                '&hourly=temperature_2m,precipitation_probability,weather_code,is_day,pressure_msl,visibility,dew_point_2m,uv_index',
+            b: 'https://api.open-meteo.com/v1/forecast?' + base + '&forecast_days=7' +
+                '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,daylight_duration'
+        };
+    }
+    function omMerge(r) {
+        var wj = r[0], dj = r[1];
+        if (!wj || !wj.current || !wj.hourly) throw new Error('пустой ответ погоды');
+        if (!dj || !dj.daily) throw new Error('пустой ответ прогноза по дням');
+        wj.daily = dj.daily;
+        return wj;
+    }
+
+    var PROV = {
+        om: {
+            name: 'Open-Meteo',
+            fetch: function (loc) {
+                var u = omUrls(loc);
+                return Promise.all([http(u.a, 8000), http(u.b, 8000)]).then(omMerge);
+            }
+        },
+        met: {
+            name: 'MET Norway (yr.no)',
+            fetch: function (loc, uvP) {
+                var url = 'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=' + loc.lat.toFixed(4) + '&lon=' + loc.lon.toFixed(4);
+                return http(url, 10000).then(function (j) {
+                    if (!j || !j.properties || !j.properties.timeseries) throw new Error('пустой ответ');
+                    return uvP.then(function (uv) { return metToOm(j, loc, uv); });
+                });
+            }
+        },
+        omp: {
+            name: 'Open-Meteo (через прокси)',
+            fetch: function (loc) {
+                var u = omUrls(loc);
+                function viaProxy(url) {
+                    return firstOf(PROXIES.map(function (px) {
+                        return http(px(url), 10000).then(function (j) {
+                            if (!j || (!j.current && !j.daily)) throw new Error('плохой ответ прокси');
+                            return j;
+                        });
+                    }));
+                }
+                return Promise.all([viaProxy(u.a), viaProxy(u.b)]).then(omMerge);
+            }
+        }
+    };
+
+    function srcOrder() {
+        var order = ['om', 'met', 'omp'];
+        var r = lsGet(SRC_KEY, null);
+        if (r && Date.now() - r.t < 6 * 3600 * 1000 && order.indexOf(r.id) > 0) {
+            order.splice(order.indexOf(r.id), 1);
+            order.unshift(r.id);
+        }
+        return order;
+    }
+
+    function tryProviders(loc, uvP, stage) {
+        var order = srcOrder(), i = 0, errs = [];
+        function next() {
+            if (i >= order.length) return Promise.reject(new Error(errs.join(' | ')));
+            var id = order[i++];
+            if (stage) stage('Источник погоды: ' + PROV[id].name + '…');
+            return PROV[id].fetch(loc, uvP).then(function (w) {
+                lsSet(SRC_KEY, { id: id, t: Date.now() });
+                return { w: w, src: id };
+            }).catch(function (e) {
+                errs.push(PROV[id].name + ': ' + (e && e.message ? e.message : 'ошибка'));
+                dbg('SRC ' + id + ' fail');
+                return next();
+            });
+        }
+        return next();
+    }
+
+    function loadWeather(loc, force, stage) {
         var key = loc.lat.toFixed(2) + ',' + loc.lon.toFixed(2);
         var cache = lsGet(LS.cache, null);
         if (!force && cache && cache.key === key && Date.now() - cache.t < CACHE_TTL) return Promise.resolve(cache.data);
 
-        var base = 'latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto&wind_speed_unit=ms';
-        // Один большой ответ на ~50 КБ у некоторых провайдеров зависает на полпути, поэтому
-        // запрос разбит на два маленьких: «сейчас + ближайшие часы» и «дни».
-        var urlA = 'https://api.open-meteo.com/v1/forecast?' + base + '&forecast_hours=26' +
-            '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m' +
-            '&hourly=temperature_2m,precipitation_probability,weather_code,is_day,pressure_msl,visibility,dew_point_2m,uv_index';
-        var urlB = 'https://api.open-meteo.com/v1/forecast?' + base + '&forecast_days=7' +
-            '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,daylight_duration';
         var aUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto&current=european_aqi,pm2_5,pm10';
-
+        var uvUrl = 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=' + loc.lat + '&longitude=' + loc.lon + '&timezone=auto&hourly=uv_index&forecast_days=7';
         var aqP = http(aUrl, 5000).catch(function () { return null; });
+        var uvP = http(uvUrl, 6000).catch(function () { return null; });
 
-        return Promise.all([httpRetry(urlA, 10000, 2), httpRetry(urlB, 10000, 2)]).then(function (r) {
-            var wj = r[0], dj = r[1];
-            if (!wj || !wj.current || !wj.hourly) throw new Error('пустой ответ погоды');
-            if (!dj || !dj.daily) throw new Error('пустой ответ прогноза по дням');
-            wj.daily = dj.daily;
+        return tryProviders(loc, uvP, stage).then(function (r) {
             return aqP.then(function (aj) {
-                var data = { w: wj, aq: aj && aj.current ? aj.current : null, t: Date.now() };
+                var data = { w: r.w, aq: aj && aj.current ? aj.current : null, src: r.src, t: Date.now() };
                 lsSet(LS.cache, { key: key, t: Date.now(), data: data });
                 return data;
             });
@@ -368,18 +447,167 @@
         });
     }
 
-    function httpRetry(url, timeout, tries) {
-        return http(url, timeout).catch(function (e) {
-            if (tries > 1) return httpRetry(url, timeout, tries - 1);
-            throw e;
-        });
+    /* --- MET Norway -> формат Open-Meteo --- */
+
+    var dtfCache = {};
+    function localParts(ms, tz) {
+        try {
+            if (tz) {
+                var f = dtfCache[tz] || (dtfCache[tz] = new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+                var parts = f.formatToParts(new Date(ms)), o = {};
+                for (var i = 0; i < parts.length; i++) o[parts[i].type] = parts[i].value;
+                var h = +o.hour; if (h === 24) h = 0;
+                return { y: +o.year, m: +o.month, d: +o.day, h: h, mi: +o.minute };
+            }
+        } catch (e) { }
+        var d = new Date(ms);
+        return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate(), h: d.getHours(), mi: d.getMinutes() };
+    }
+
+    function sunTimes(lat, lon, y, m, d) {
+        var rad = Math.PI / 180;
+        var doy = Math.floor((Date.UTC(y, m - 1, d) - Date.UTC(y, 0, 0)) / 86400000);
+        var g = 2 * Math.PI / 365 * (doy - 1);
+        var eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+        var decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+        var c = Math.cos(90.833 * rad) / (Math.cos(lat * rad) * Math.cos(decl)) - Math.tan(lat * rad) * Math.tan(decl);
+        var ha = Math.acos(clamp(c, -1, 1)) / rad;
+        var base = Date.UTC(y, m - 1, d);
+        return { rise: base + (720 - 4 * (lon + ha) - eq) * 60000, set: base + (720 - 4 * (lon - ha) - eq) * 60000 };
+    }
+
+    function symCode(sym) {
+        if (!sym) return 3;
+        var base = sym.replace(/_(day|night|polartwilight)$/, '');
+        var thunder = base.indexOf('thunder') >= 0;
+        base = base.replace('andthunder', '');
+        var map = {
+            clearsky: 0, fair: 1, partlycloudy: 2, cloudy: 3, fog: 45,
+            lightrain: 61, rain: 63, heavyrain: 65, lightrainshowers: 80, rainshowers: 81, heavyrainshowers: 82,
+            lightsleet: 66, sleet: 67, heavysleet: 67, lightsleetshowers: 80, sleetshowers: 81, heavysleetshowers: 82,
+            lightsnow: 71, snow: 73, heavysnow: 75, lightsnowshowers: 85, snowshowers: 85, heavysnowshowers: 86
+        };
+        if (thunder) return 95;
+        var c = map[base];
+        return c === undefined ? 3 : c;
+    }
+    function codeSev(c) {
+        if (c >= 95) return 6;
+        if (c === 71 || c === 73 || c === 75 || c === 77 || c === 85 || c === 86) return 5;
+        if (c >= 61) return 4;
+        if (c >= 51) return 3;
+        if (c >= 45) return 2;
+        return 0;
+    }
+
+    function metToOm(j, loc, uv) {
+        var ts = j.properties.timeseries, tz = loc.tz, now = Date.now(), lat = loc.lat, lon = loc.lon;
+        var sunCache = {};
+        function lp(ms) { return localParts(ms, tz); }
+        function dayKey(p) { return p.y + '-' + pad(p.m) + '-' + pad(p.d); }
+        function isoP(p) { return dayKey(p) + 'T' + pad(p.h) + ':' + pad(p.mi); }
+        function sunOf(p) {
+            var k = dayKey(p);
+            return sunCache[k] || (sunCache[k] = sunTimes(lat, lon, p.y, p.m, p.d));
+        }
+        function dew(t, rh) {
+            var a = 17.62, b = 243.12, gm = Math.log(Math.max(rh, 1) / 100) + a * t / (b + t);
+            return b * gm / (a - gm);
+        }
+        function feels(t, rh, ws) {
+            var e = rh / 100 * 6.105 * Math.exp(17.27 * t / (237.7 + t));
+            return t + 0.33 * e - 0.70 * ws - 4.0;
+        }
+
+        var uvMap = {}, i;
+        if (uv && uv.hourly && uv.hourly.time) {
+            for (i = 0; i < uv.hourly.time.length; i++) uvMap[uv.hourly.time[i].substring(0, 13)] = uv.hourly.uv_index[i];
+        }
+
+        var E = [];
+        for (i = 0; i < ts.length; i++) {
+            var e = ts[i], ms = Date.parse(e.time);
+            if (isNaN(ms) || !e.data || !e.data.instant) continue;
+            var det = e.data.instant.details || {};
+            var n1 = e.data.next_1_hours, n6 = e.data.next_6_hours, n12 = e.data.next_12_hours;
+            var sym = (n1 && n1.summary && n1.summary.symbol_code) || (n6 && n6.summary && n6.summary.symbol_code) || (n12 && n12.summary && n12.summary.symbol_code);
+            var amount = 0;
+            if (n1 && n1.details && n1.details.precipitation_amount !== undefined) amount = n1.details.precipitation_amount;
+            else if (n6 && n6.details && n6.details.precipitation_amount !== undefined) amount = n6.details.precipitation_amount;
+            var p = lp(ms), sn = sunOf(p);
+            E.push({
+                ms: ms, p: p, t: det.air_temperature, rh: det.relative_humidity, pr: det.air_pressure_at_sea_level,
+                cl: det.cloud_area_fraction, ws: det.wind_speed, wd: det.wind_from_direction,
+                code: symCode(sym), day: (ms >= sn.rise && ms < sn.set) ? 1 : 0, amount: amount || 0, hourly: !!n1
+            });
+        }
+        if (!E.length) throw new Error('пустой прогноз');
+
+        var f = 0;
+        for (i = 0; i < E.length; i++) if (E[i].ms <= now) f = i;
+        var c0 = E[f], nowP = lp(now), sn0 = sunOf(nowP);
+
+        var cur = {
+            time: isoP(nowP), temperature_2m: c0.t, relative_humidity_2m: c0.rh,
+            apparent_temperature: feels(c0.t, c0.rh, c0.ws), is_day: (now >= sn0.rise && now < sn0.set) ? 1 : 0,
+            precipitation: c0.hourly ? c0.amount : 0, weather_code: c0.code, cloud_cover: c0.cl,
+            pressure_msl: c0.pr, wind_speed_10m: c0.ws, wind_direction_10m: c0.wd, wind_gusts_10m: null
+        };
+
+        var H = { time: [], temperature_2m: [], precipitation_probability: [], weather_code: [], is_day: [], pressure_msl: [], visibility: [], dew_point_2m: [], uv_index: [] };
+        for (i = f; i < E.length && H.time.length < 26; i++) {
+            var q = E[i];
+            if (i > f && q.ms - E[i - 1].ms > 3600000 + 1000) break;
+            var hk = isoP(q.p).substring(0, 13);
+            H.time.push(hk + ':00');
+            H.temperature_2m.push(q.t);
+            H.precipitation_probability.push(null);
+            H.weather_code.push(q.code);
+            H.is_day.push(q.day);
+            H.pressure_msl.push(q.pr);
+            H.visibility.push(null);
+            H.dew_point_2m.push(dew(q.t, q.rh));
+            H.uv_index.push(uvMap[hk] !== undefined ? uvMap[hk] : null);
+        }
+
+        var D = { time: [], weather_code: [], temperature_2m_max: [], temperature_2m_min: [], sunrise: [], sunset: [], uv_index_max: [], precipitation_sum: [], precipitation_probability_max: [], wind_speed_10m_max: [], wind_gusts_10m_max: [], daylight_duration: [] };
+        for (var di = 0; di < 7; di++) {
+            var dd = new Date(Date.UTC(nowP.y, nowP.m - 1, nowP.d + di));
+            var y = dd.getUTCFullYear(), m = dd.getUTCMonth() + 1, d = dd.getUTCDate();
+            var key = y + '-' + pad(m) + '-' + pad(d);
+            var items = E.filter(function (x) { return dayKey(x.p) === key; });
+            if (!items.length) break;
+            var tmin = 99, tmax = -99, psum = 0, wmax = 0, best = null, near = null, k;
+            for (k = 0; k < items.length; k++) {
+                var it = items[k];
+                tmin = Math.min(tmin, it.t); tmax = Math.max(tmax, it.t);
+                psum += it.amount; wmax = Math.max(wmax, it.ws || 0);
+                if (it.p.h >= 7 && it.p.h <= 21 && (!best || codeSev(it.code) > codeSev(best.code))) best = it;
+                if (!near || Math.abs(it.p.h - 13) < Math.abs(near.p.h - 13)) near = it;
+            }
+            var code = best && codeSev(best.code) >= 3 ? best.code : near.code;
+            var uvMaxD = null;
+            for (var hkey in uvMap) {
+                if (hkey.substring(0, 10) === key && uvMap[hkey] !== null && (uvMaxD === null || uvMap[hkey] > uvMaxD)) uvMaxD = uvMap[hkey];
+            }
+            var sd = sunTimes(lat, lon, y, m, d);
+            D.time.push(key); D.weather_code.push(code);
+            D.temperature_2m_max.push(tmax); D.temperature_2m_min.push(tmin);
+            D.sunrise.push(isoP(lp(sd.rise))); D.sunset.push(isoP(lp(sd.set)));
+            D.uv_index_max.push(uvMaxD); D.precipitation_sum.push(psum);
+            D.precipitation_probability_max.push(null);
+            D.wind_speed_10m_max.push(wmax); D.wind_gusts_10m_max.push(null);
+            D.daylight_duration.push((sd.set - sd.rise) / 1000);
+        }
+        if (!D.time.length || H.time.length < 3) throw new Error('мало данных в прогнозе');
+        return { current: cur, hourly: H, daily: D };
     }
 
     function getData(force, stage) {
         if (stage) stage('Определяю город…');
         return getLocation().then(function (loc) {
             if (stage) stage('Загружаю погоду для: ' + loc.name + '…');
-            return loadWeather(loc, force).then(function (data) { return { loc: loc, data: data }; });
+            return loadWeather(loc, force, stage).then(function (data) { return { loc: loc, data: data }; });
         });
     }
 
@@ -457,8 +685,9 @@
         else if (f < 32) out.push(['Тепло — лёгкая одежда', '#ffe082']);
         else out.push(['Жара — пейте больше воды, держитесь в тени', '#ffab91']);
 
-        var pp = d.precipitation_probability_max[0] || 0;
         var dk = wmo(d.weather_code[0])[1];
+        var pp = d.precipitation_probability_max[0];
+        if (pp === null || pp === undefined) pp = (dk === 'rain' || dk === 'shower' || dk === 'thunder') ? 60 : ((dk === 'snow' || dk === 'drizzle') ? 50 : 0);
         if (kind === 'thunder' || dk === 'thunder') out.push(['Гроза — лучше остаться в помещении', '#ce93d8']);
         else if (pp >= 50 && dk === 'snow') out.push(['Ожидается снег — осторожно на дорогах', '#b3e5fc']);
         else if (pp >= 50) out.push(['Возьмите зонт — осадки вероятны (' + pp + '%)', '#4fc3f7']);
@@ -509,7 +738,9 @@
 
         var vis = H.visibility && H.visibility[idx] !== null ? H.visibility[idx] : null;
         var dew = H.dew_point_2m ? H.dew_point_2m[idx] : null;
-        var uvNow = H.uv_index ? (H.uv_index[idx] || 0) : (D.uv_index_max[0] || 0);
+        var uvRaw = H.uv_index ? H.uv_index[idx] : D.uv_index_max[0];
+        var uvKnown = uvRaw !== null && uvRaw !== undefined;
+        var uvNow = uvKnown ? uvRaw : 0;
         var aqi = aq && aq.european_aqi !== null && aq.european_aqi !== undefined ? aq.european_aqi : null;
 
         var out = '';
@@ -519,7 +750,7 @@
         out += '<div class="wp-top">' +
             '<div class="wp-btn wp-f selector" data-act="city">' + SVG_PIN + '<b>' + loc.name + '</b><small>' + (loc.auto ? 'авто · ' : '') + 'сменить</small></div>' +
             '<div class="wp-btn wp-f selector" data-act="refresh">' + SVG_REF + '<span>Обновить</span></div>' +
-            '<div class="wp-upd">' + (loc.fallback ? 'Город не определился — показана Москва, выберите свой · ' : '') + (pack.stale ? 'Нет связи, показаны старые данные · ' : '') + 'Обновлено в ' + pad(upd.getHours()) + ':' + pad(upd.getMinutes()) + ' · Open-Meteo</div>' +
+            '<div class="wp-upd">' + (loc.fallback ? 'Город не определился — показана Москва, выберите свой · ' : '') + (pack.stale ? 'Нет связи, показаны старые данные · ' : '') + 'Обновлено в ' + pad(upd.getHours()) + ':' + pad(upd.getMinutes()) + ' · ' + (PROV[pack.src] ? PROV[pack.src].name : 'Open-Meteo') + '</div>' +
             '</div>';
 
         /* главный блок */
@@ -543,11 +774,11 @@
         var tiles = '';
 
         // Ветер
-        var wnd = fmtWind(c.wind_speed_10m), gust = fmtWind(c.wind_gusts_10m || 0);
+        var wnd = fmtWind(c.wind_speed_10m), gust = c.wind_gusts_10m ? fmtWind(c.wind_gusts_10m) : null;
         tiles += tile('#4fc3f7', 'Ветер',
             '<div class="wp-row"><div><div class="wp-val">' + wnd.v + '<small>' + wnd.u + '</small></div>' +
             '<div class="wp-sub">' + windInfo(c.wind_speed_10m) + ' · ' + dirName(c.wind_direction_10m) + '</div>' +
-            '<div class="wp-sub">Порывы до ' + gust.v + ' ' + gust.u + '</div></div>' +
+            (gust ? '<div class="wp-sub">Порывы до ' + gust.v + ' ' + gust.u + '</div>' : '') + '</div>' +
             '<svg viewBox="0 0 64 64" class="wp-compass"><circle cx="32" cy="32" r="28" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.4)" stroke-width="2"/>' +
             '<text x="32" y="12" text-anchor="middle" font-size="8" fill="#fff" font-weight="700">С</text>' +
             '<text x="32" y="60" text-anchor="middle" font-size="8" fill="rgba(255,255,255,.6)">Ю</text>' +
@@ -577,15 +808,15 @@
             (trend ? '<div class="wp-sub">Ближайшие 3 ч: ' + trend + '</div>' : ''));
 
         // Осадки
-        var psum = D.precipitation_sum[0] || 0, pmax = D.precipitation_probability_max[0] || 0;
+        var psum = D.precipitation_sum[0] || 0, pmaxRaw = D.precipitation_probability_max[0], hasPop = pmaxRaw !== null && pmaxRaw !== undefined, pmax = pmaxRaw || 0;
         tiles += tile('#42a5f5', 'Осадки сегодня',
             '<div class="wp-val">' + (psum > 0 ? (Math.round(psum * 10) / 10) + '<small>мм</small>' : 'Нет') + '</div>' +
-            '<div class="wp-sub">Вероятность до ' + pmax + '%' + (c.precipitation > 0 ? ' · сейчас ' + c.precipitation + ' мм' : '') + '</div>' +
-            '<div class="wp-bar"><i style="width:' + clamp(pmax, 0, 100) + '%"></i></div>');
+            '<div class="wp-sub">' + (hasPop ? 'Вероятность до ' + pmax + '%' : 'Вероятность неизвестна') + (c.precipitation > 0 ? ' · сейчас ' + c.precipitation + ' мм' : '') + '</div>' +
+            (hasPop ? '<div class="wp-bar"><i style="width:' + clamp(pmax, 0, 100) + '%"></i></div>' : ''));
 
         // УФ
         var uvI = uvInfo(uvNow), uvMax = D.uv_index_max[0] || 0;
-        tiles += tile(uvI[1], 'УФ-индекс',
+        tiles += !uvKnown ? tile('#9e9e9e', 'УФ-индекс', '<div class="wp-val">—</div><div class="wp-sub">Нет данных</div>') : tile(uvI[1], 'УФ-индекс',
             '<div class="wp-val">' + (Math.round(uvNow * 10) / 10) + '</div>' +
             '<div class="wp-sub" style="color:' + uvI[1] + '">' + uvI[0] + ' · макс. сегодня ' + Math.round(uvMax) + '</div>' +
             '<div class="wp-scale"><i style="left:' + clamp(uvNow / 11 * 100, 0, 100) + '%"></i></div>');
@@ -664,7 +895,7 @@
                 '<div class="wp-day__max" style="color:' + tcol(mx) + '">' + fmtT(mx) + '</div></div>';
         }
         out += '<div class="wp-h2">Прогноз на 7 дней</div><div class="wp-days">' + dd + '</div>';
-        out += '<div class="wp-foot">Погода+ · данные Open-Meteo.com</div>';
+        out += '<div class="wp-foot">Погода+ · данные ' + (pack.src === 'met' ? 'MET Norway (api.met.no), УФ и воздух — Open-Meteo' : 'Open-Meteo.com') + '</div>';
 
         return { html: out, theme: theme(kind, day), fx: fxHtml(kind, day) };
     }
@@ -672,17 +903,17 @@
     function dayDetails(D, i) {
         var dt = dateObj(D.time[i]), p = dateParts(D.time[i]);
         var info = wmo(D.weather_code[i]);
-        var w = fmtWind(D.wind_speed_10m_max[i] || 0), g = fmtWind(D.wind_gusts_10m_max[i] || 0);
-        var uv = D.uv_index_max[i] || 0;
+        var w = fmtWind(D.wind_speed_10m_max[i] || 0), g = D.wind_gusts_10m_max[i] ? fmtWind(D.wind_gusts_10m_max[i]) : null;
+        var uvRaw = D.uv_index_max[i], uv = uvRaw || 0, pop = D.precipitation_probability_max[i];
         var dl = D.daylight_duration && D.daylight_duration[i] ? D.daylight_duration[i] / 60 : (toMin(D.sunset[i]) - toMin(D.sunrise[i]));
         var mp = moonPhase(D.time[i]);
         return {
             title: WD_FULL[dt.getDay()] + ', ' + p.d + ' ' + MON[p.m - 1],
             items: [
                 { title: info[0], subtitle: 'Днём ' + fmtT(D.temperature_2m_max[i]) + ', ночью ' + fmtT(D.temperature_2m_min[i]) },
-                { title: 'Осадки: ' + (Math.round((D.precipitation_sum[i] || 0) * 10) / 10) + ' мм', subtitle: 'Вероятность до ' + (D.precipitation_probability_max[i] || 0) + '%' },
-                { title: 'Ветер до ' + w.v + ' ' + w.u, subtitle: 'Порывы до ' + g.v + ' ' + g.u },
-                { title: 'УФ-индекс: ' + Math.round(uv), subtitle: uvInfo(uv)[0] },
+                { title: 'Осадки: ' + (Math.round((D.precipitation_sum[i] || 0) * 10) / 10) + ' мм', subtitle: pop === null || pop === undefined ? 'Вероятность неизвестна' : 'Вероятность до ' + pop + '%' },
+                { title: 'Ветер до ' + w.v + ' ' + w.u, subtitle: g ? 'Порывы до ' + g.v + ' ' + g.u : '' },
+                { title: 'УФ-индекс: ' + (uvRaw === null || uvRaw === undefined ? '—' : Math.round(uv)), subtitle: uvRaw === null || uvRaw === undefined ? '' : uvInfo(uv)[0] },
                 { title: '\u2191 ' + hm(D.sunrise[i]) + '   \u2193 ' + hm(D.sunset[i]), subtitle: 'Световой день ' + durText(dl) },
                 { title: 'Луна: ' + mp.name, subtitle: 'Освещённость ' + mp.ill + '%' }
             ]
@@ -696,7 +927,7 @@
     function saveCity(c) {
         lsSet(LS.city, c);
         var rec = lsGet(LS.recent, []).filter(function (x) { return x.name !== c.name || Math.abs(x.lat - c.lat) > .05; });
-        rec.unshift({ name: c.name, lat: c.lat, lon: c.lon, sub: c.sub || '' });
+        rec.unshift({ name: c.name, lat: c.lat, lon: c.lon, tz: c.tz, sub: c.sub || '' });
         lsSet(LS.recent, rec.slice(0, 6));
         lsSet(LS.cache, null);
         syncCitySel();
@@ -716,7 +947,7 @@
                         title: 'Результаты поиска',
                         items: items,
                         onSelect: function (a) {
-                            var c = { name: a.r.name, lat: a.r.latitude, lon: a.r.longitude, sub: a.subtitle };
+                            var c = { name: a.r.name, lat: a.r.latitude, lon: a.r.longitude, tz: a.r.timezone, sub: a.subtitle };
                             saveCity(c);
                             done();
                         },
@@ -742,7 +973,7 @@
         });
         POPULAR.forEach(function (p) {
             if (used[p[0]]) return;
-            items.push({ title: p[0], subtitle: 'Популярный', city: { name: p[0], lat: p[1], lon: p[2] } });
+            items.push({ title: p[0], subtitle: 'Популярный', city: { name: p[0], lat: p[1], lon: p[2], tz: p[3] } });
         });
         Lampa.Select.show({
             title: 'Город',
@@ -1110,7 +1341,7 @@
             if (!sv || isPopular(sv)) searchCity(settingsBack, onCityPicked);
         } else if (/^p\d+$/.test(v)) {
             var p = POPULAR[+v.substring(1)];
-            if (p) { saveCity({ name: p[0], lat: p[1], lon: p[2] }); updateHead(true); }
+            if (p) { saveCity({ name: p[0], lat: p[1], lon: p[2], tz: p[3] }); updateHead(true); }
         }
     }
 
