@@ -995,11 +995,13 @@
         if (document.getElementById('weather-plus-style')) return;
         var css = [
             '.wp{position:relative;height:100%;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)}',
-            '.wp-bg{position:absolute;left:0;top:0;right:0;bottom:0;background:#1c2f4a;opacity:var(--wp-a,.7)}',
+            '.wp-frame{position:absolute;left:1.1em;top:1.1em;right:1.1em;bottom:1.1em;border-radius:1.6em;overflow:hidden}',
+            '.wp-frame .scroll{height:100%}',
+            '.wp-bg{position:absolute;left:0;top:0;right:0;bottom:0;background:#1c2f4a;opacity:var(--wp-a,.85)}',
             '.wp-fx{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none}',
             '.wp-bg:after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;background:radial-gradient(60% 50% at 85% 0%,rgba(255,255,255,.18),transparent 70%)}',
             '.wp .scroll{position:relative;z-index:1}',
-            '.wp-body{padding:1em 3.2em 3em 3.2em}',
+            '.wp-body{padding:1.4em 2.6em 3em 2.6em}',
             '.wp-f{transition:box-shadow .12s}',
             '.wp-f.focus{box-shadow:0 0 0 .25em #fff}',
 
@@ -1106,9 +1108,9 @@
             '@keyframes wpflash{0%,92%,96%,100%{opacity:0}93%{opacity:.35}94%{opacity:.05}95%{opacity:.25}}',
 
             /* виджет в шапке */
-            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;padding:.2em .7em!important;white-space:nowrap}',
-            '.wp-head svg{width:1.8em;height:1.8em;margin-right:.35em}',
-            '.wp-head span{font-weight:600;font-size:1.1em}'
+            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:1em!important;padding:.1em .5em!important;white-space:nowrap;line-height:1}',
+            '.wp-head svg{width:1.25em;height:1.25em;margin-right:.25em;flex-shrink:0}',
+            '.wp-head span{font-size:1em;font-weight:inherit}'
         ].join('\n');
         var st = document.createElement('style');
         st.id = 'weather-plus-style';
@@ -1121,8 +1123,8 @@
     /* ------------------------------------------------------------------ */
 
     function bgAlpha() {
-        var v = parseInt(opt('weather_plus_bgalpha', '70'), 10);
-        if (isNaN(v)) v = 70;
+        var v = parseInt(opt('weather_plus_bgalpha2', '85'), 10);
+        if (isNaN(v)) v = 85;
         return clamp(v, 20, 100) / 100;
     }
 
@@ -1211,9 +1213,11 @@
         this.create = function () {
             injectStyle();
             try { html[0].style.setProperty('--wp-a', bgAlpha()); } catch (e) { }
-            html.append(bg);
-            html.append(fx);
-            html.append(scroll.render());
+            var frame = $('<div class="wp-frame"></div>');
+            frame.append(bg);
+            frame.append(fx);
+            frame.append(scroll.render());
+            html.append(frame);
             scroll.append(body);
             this.load(false);
             // сразу убираем системный индикатор Lampa: показываем свой и даём работать кнопке «Назад»
@@ -1276,9 +1280,23 @@
         if (!tm.length && !host.length) return false;
         headEl = $('<div class="head__action selector wp-head"></div>');
         headEl.on('hover:enter', openPage);
-        if (tm.length) tm.before(headEl);
-        else host.prepend(headEl);
+        if (tm.length) tm.after(headEl);
+        else host.append(headEl);
         return true;
+    }
+
+    // размер и начертание берём у часов, чтобы виджет выглядел их продолжением
+    function matchClock() {
+        if (!headEl) return;
+        try {
+            var ck = $('.head__time-now, .time--clock').first();
+            if (ck.length) {
+                var cs = window.getComputedStyle(ck[0]);
+                headEl.css({ fontSize: cs.fontSize, fontWeight: cs.fontWeight });
+                return;
+            }
+        } catch (e) { }
+        headEl.css({ fontSize: '1.6em', fontWeight: '600' });
     }
 
     function updateHeadFrom(res) {
@@ -1294,6 +1312,7 @@
             }
             var c = res.data.w.current, k = wmo(c.weather_code)[1];
             headEl.html(icon(k, c.is_day === 1) + '<span>' + fmtT(c.temperature_2m) + '</span>');
+            matchClock();
         } catch (e) { dbg('head: ' + (e && e.message)); }
     }
 
@@ -1383,7 +1402,7 @@
             });
             Lampa.SettingsApi.addParam({
                 component: 'weather_plus',
-                param: { name: 'weather_plus_bgalpha', type: 'select', values: { '100': 'Нет', '85': 'Слабая', '70': 'Средняя', '55': 'Сильная', '40': 'Очень сильная' }, 'default': '70' },
+                param: { name: 'weather_plus_bgalpha2', type: 'select', values: { '100': 'Нет', '92': 'Очень слабая', '85': 'Слабая', '70': 'Средняя', '55': 'Сильная' }, 'default': '85' },
                 field: { name: 'Прозрачность фона', description: 'Насколько просвечивает фон Lampa. Применится при следующем открытии страницы' }
             });
             Lampa.SettingsApi.addParam({
