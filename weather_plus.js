@@ -176,8 +176,8 @@
 
     function theme(kind, day) {
         if (!day) {
-            if (kind === 'clear') return 'linear-gradient(160deg,#080d24 0%,#1a2a60 55%,#3b2f7a 100%)';
-            if (kind === 'thunder') return 'linear-gradient(160deg,#100c22 0%,#2c2150 55%,#4a2f66 100%)';
+            if (kind === 'clear') return 'linear-gradient(160deg,#080d24 0%,#1a2a60 55%,#1f4470 100%)';
+            if (kind === 'thunder') return 'linear-gradient(160deg,#0d1420 0%,#1f2a44 55%,#34405c 100%)';
             if (kind === 'snow') return 'linear-gradient(160deg,#1a2540 0%,#34507a 55%,#5d7ba3 100%)';
             if (kind === 'rain' || kind === 'shower' || kind === 'drizzle') return 'linear-gradient(160deg,#0b1626 0%,#16304a 55%,#235068 100%)';
             if (kind === 'fog') return 'linear-gradient(160deg,#1f2630 0%,#3a4552 55%,#566370 100%)';
@@ -191,7 +191,7 @@
             case 'rain':
             case 'shower': return 'linear-gradient(160deg,#1c2f4a 0%,#2d4d6e 55%,#3f6f86 100%)';
             case 'snow': return 'linear-gradient(160deg,#5b7a9d 0%,#9db8d6 55%,#dce8f4 100%)';
-            case 'thunder': return 'linear-gradient(160deg,#1a1530 0%,#3a2a5c 55%,#5a3d73 100%)';
+            case 'thunder': return 'linear-gradient(160deg,#141a28 0%,#2c3a55 55%,#445572 100%)';
             case 'fog': return 'linear-gradient(160deg,#55616d 0%,#7d8995 55%,#a3adb7 100%)';
         }
         return 'linear-gradient(160deg,#2b6cb0 0%,#5f9fd8 55%,#b8c6db 100%)';
@@ -802,7 +802,7 @@
         }
         var mm = c.pressure_msl * 0.750062;
         var pLabel = mm < 750 ? 'Пониженное' : (mm > 770 ? 'Повышенное' : 'Нормальное');
-        tiles += tile('#ab8cff', 'Давление',
+        tiles += tile('#b0bec5', 'Давление',
             '<div class="wp-val">' + pr.v + '<small>' + pr.u + '</small></div>' +
             '<div class="wp-sub">' + pLabel + '</div>' +
             (trend ? '<div class="wp-sub">Ближайшие 3 ч: ' + trend + '</div>' : ''));
@@ -1001,7 +1001,7 @@
             '.wp-fx{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none}',
             '.wp-bg:after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;background:radial-gradient(60% 50% at 85% 0%,rgba(255,255,255,.18),transparent 70%)}',
             '.wp .scroll{position:relative;z-index:1}',
-            '.wp-body{padding:1.4em 2.6em 3em 2.6em}',
+            '.wp-body{padding:.7em 2.6em 3em 2.6em}',
             '.wp-f{transition:box-shadow .12s}',
             '.wp-f.focus{box-shadow:0 0 0 .25em #fff}',
 
@@ -1122,6 +1122,19 @@
     /*  Компонент страницы                                                 */
     /* ------------------------------------------------------------------ */
 
+    var BG_COLORS = {
+        graphite: 'linear-gradient(160deg,#14181f 0%,#222a35 55%,#2f3a47 100%)',
+        blue: 'linear-gradient(160deg,#0d2a4d 0%,#1b4f8c 55%,#2d77bf 100%)',
+        teal: 'linear-gradient(160deg,#08292e 0%,#115259 55%,#1c7a82 100%)',
+        green: 'linear-gradient(160deg,#0f2d1d 0%,#1b5733 55%,#2b7a4b 100%)',
+        gray: 'linear-gradient(160deg,#2a2f36 0%,#454d58 55%,#626c78 100%)',
+        warm: 'linear-gradient(160deg,#2e1d0e 0%,#62401a 55%,#9a6a2e 100%)',
+        black: 'linear-gradient(160deg,#030303 0%,#0b0b0b 55%,#161616 100%)'
+    };
+    function bgStyle(auto) {
+        return BG_COLORS[opt('weather_plus_bgcolor', 'auto')] || auto;
+    }
+
     function bgAlpha() {
         var v = parseInt(opt('weather_plus_bgalpha2', '85'), 10);
         if (isNaN(v)) v = 85;
@@ -1133,6 +1146,7 @@
         var html = $('<div class="wp"></div>');
         var bg = $('<div class="wp-bg"></div>');
         var fx = $('<div class="wp-fx"></div>');
+        var frame = $('<div class="wp-frame"></div>');
         var body = $('<div class="wp-body"></div>');
         var self = this;
         var last = null;
@@ -1153,6 +1167,22 @@
         function showLoading() {
             body.html('<div class="wp-loading"><i></i><div class="wp-stage">Загружаю погоду…</div></div>');
         }
+        // Одинаковые отступы окна со всех сторон: слева и сверху — от начала области страницы,
+        // справа и снизу — от краёв экрана (если область страницы шире или выше экрана, лишнее срезается).
+        function layout() {
+            if (dead) return;
+            try {
+                var el = html[0], r = el.getBoundingClientRect();
+                if (!r.width || !r.height) return;
+                var fs = parseFloat(window.getComputedStyle(el).fontSize) || 16, m = fs * 1.1;
+                var W = window.innerWidth || document.documentElement.clientWidth;
+                var Hh = window.innerHeight || document.documentElement.clientHeight;
+                var right = Math.max(m, r.right - (W - m));
+                var bottom = Math.max(m, r.bottom - (Hh - m));
+                frame.css({ left: m + 'px', top: m + 'px', right: Math.round(right) + 'px', bottom: Math.round(bottom) + 'px' });
+            } catch (e) { }
+        }
+        function onResize() { layout(); }
         function stage(t) { body.find('.wp-stage').text(t); }
         function showError(msg) {
             body.html('<div class="wp-err"><div>Не удалось получить погоду</div><div class="wp-dbg">' + (msg || '') + '<br>' + DBG.join('<br>') + '</div>' +
@@ -1164,6 +1194,7 @@
         }
         function finish() {
             try { self.activity.loader(false); self.activity.toggle(); } catch (e) { }
+            layout();
             refocus();
         }
 
@@ -1198,7 +1229,7 @@
                 if (dead) return;
                 current = res;
                 var b = build(res.loc, res.data);
-                bg.css('background', b.theme);
+                bg.css('background', bgStyle(b.theme));
                 fx.html(opt('weather_plus_anim', true) ? b.fx : '');
                 body.html(b.html);
                 bindItems();
@@ -1213,7 +1244,6 @@
         this.create = function () {
             injectStyle();
             try { html[0].style.setProperty('--wp-a', bgAlpha()); } catch (e) { }
-            var frame = $('<div class="wp-frame"></div>');
             frame.append(bg);
             frame.append(fx);
             frame.append(scroll.render());
@@ -1224,13 +1254,17 @@
             setTimeout(function () {
                 if (dead) return;
                 try { self.activity.loader(false); self.activity.toggle(); } catch (e) { }
+                layout();
             }, 0);
+            setTimeout(layout, 400);
+            window.addEventListener('resize', onResize);
             return this.render();
         };
 
         this.render = function () { return html; };
 
         this.start = function () {
+            layout();
             if (!isActive()) return;
             Lampa.Controller.add('content', {
                 toggle: function () {
@@ -1258,6 +1292,7 @@
         this.stop = function () { };
         this.destroy = function () {
             dead = true;
+            window.removeEventListener('resize', onResize);
             scroll.destroy();
             html.remove();
         };
@@ -1273,13 +1308,25 @@
         Lampa.Activity.push({ url: '', title: 'Погода+', component: 'weather_plus', page: 1 });
     }
 
+    var lastOpen = 0;
+    function openPageOnce() {
+        var now = Date.now();
+        if (now - lastOpen < 700) return;
+        lastOpen = now;
+        try {
+            var a = Lampa.Activity.active();
+            if (a && a.component === 'weather_plus') return;
+        } catch (e) { }
+        openPage();
+    }
+
     function mountHead() {
         if (headEl && $.contains(document.body, headEl[0])) return true;
         var tm = $('.head__time').first();
         var host = $('.head__actions').first();
         if (!tm.length && !host.length) return false;
         headEl = $('<div class="head__action selector wp-head"></div>');
-        headEl.on('hover:enter', openPage);
+        headEl.on('hover:enter click', openPageOnce);
         if (tm.length) tm.after(headEl);
         else host.append(headEl);
         return true;
@@ -1299,6 +1346,21 @@
         headEl.css({ fontSize: '1.6em', fontWeight: '600' });
     }
 
+    // сдвигаем виджет в правый угол: его правый край выравнивается по правому краю окна погоды
+    function alignHead() {
+        if (!headEl) return;
+        try {
+            headEl.css('transform', '');
+            var r = headEl[0].getBoundingClientRect();
+            if (!r.width) return;
+            var W = window.innerWidth || document.documentElement.clientWidth;
+            var fs = parseFloat(window.getComputedStyle(document.body).fontSize) || 16;
+            var shift = (W - r.right) - fs * 1.1;
+            if (shift > 1) headEl.css('transform', 'translateX(' + Math.round(shift) + 'px)');
+        } catch (e) { }
+    }
+    var alignBound = false;
+
     function updateHeadFrom(res) {
         if (!opt('weather_plus_head', true)) {
             if (headEl) { headEl.remove(); headEl = null; }
@@ -1313,6 +1375,10 @@
             var c = res.data.w.current, k = wmo(c.weather_code)[1];
             headEl.html(icon(k, c.is_day === 1) + '<span>' + fmtT(c.temperature_2m) + '</span>');
             matchClock();
+            alignHead();
+            setTimeout(alignHead, 400);
+            setTimeout(alignHead, 2000);
+            if (!alignBound) { alignBound = true; window.addEventListener('resize', alignHead); }
         } catch (e) { dbg('head: ' + (e && e.message)); }
     }
 
@@ -1329,15 +1395,6 @@
     /* ------------------------------------------------------------------ */
 
     var SVG_MENU = '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19.36 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.64-4.96z"/></svg>';
-
-    function addMenu() {
-        if ($('.menu [data-action="weather_plus"]').length) return;
-        var btn = $('<li class="menu__item selector" data-action="weather_plus">' +
-            '<div class="menu__ico">' + SVG_MENU + '</div>' +
-            '<div class="menu__text">Погода+</div></li>');
-        btn.on('hover:enter', openPage);
-        $('.menu .menu__list').eq(0).append(btn);
-    }
 
     function settingsBack() {
         try { Lampa.Controller.toggle('settings_component'); } catch (e) { }
@@ -1407,6 +1464,14 @@
             });
             Lampa.SettingsApi.addParam({
                 component: 'weather_plus',
+                param: {
+                    name: 'weather_plus_bgcolor', type: 'select', 'default': 'auto',
+                    values: { auto: 'По погоде', graphite: 'Графит', blue: 'Синий', teal: 'Бирюзовый', green: 'Зелёный', gray: 'Серый', warm: 'Тёплый коричневый', black: 'Чёрный' }
+                },
+                field: { name: 'Цвет фона', description: '«По погоде» — цвет меняется вместе с погодой и временем суток. Применится при следующем открытии страницы' }
+            });
+            Lampa.SettingsApi.addParam({
+                component: 'weather_plus',
                 param: { name: 'weather_plus_anim', type: 'trigger', 'default': true },
                 field: { name: 'Анимация фона', description: 'Дождь, снег, звёзды. Отключите, если тормозит' }
             });
@@ -1426,7 +1491,7 @@
     function init() {
         Lampa.Component.add('weather_plus', WeatherPage);
         injectStyle();
-        addMenu();
+        $('.menu [data-action="weather_plus"]').remove();
         addSettings();
         setTimeout(function () { updateHead(false); }, 1500);
         setInterval(function () { updateHead(true); }, 15 * 60 * 1000);
