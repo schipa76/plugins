@@ -201,20 +201,20 @@
         var out = '', i, n;
         function rnd(a, b) { return a + Math.random() * (b - a); }
         if (kind === 'rain' || kind === 'shower' || kind === 'thunder' || kind === 'drizzle') {
-            n = kind === 'drizzle' ? 14 : (kind === 'rain' ? 26 : 34);
+            n = kind === 'drizzle' ? 10 : (kind === 'rain' ? 18 : 22);
             for (i = 0; i < n; i++) {
                 out += '<i class="wp-fx-rain" style="left:' + rnd(0, 100).toFixed(1) + '%;animation-duration:' + rnd(.7, 1.3).toFixed(2) +
                     's;animation-delay:-' + rnd(0, 2).toFixed(2) + 's;opacity:' + rnd(.35, .8).toFixed(2) + '"></i>';
             }
             if (kind === 'thunder') out += '<i class="wp-fx-flash"></i>';
         } else if (kind === 'snow') {
-            for (i = 0; i < 30; i++) {
+            for (i = 0; i < 20; i++) {
                 var s = rnd(.35, .9).toFixed(2);
                 out += '<i class="wp-fx-snow" style="left:' + rnd(0, 100).toFixed(1) + '%;width:' + s + 'em;height:' + s + 'em;animation-duration:' +
                     rnd(7, 14).toFixed(1) + 's;animation-delay:-' + rnd(0, 12).toFixed(1) + 's"></i>';
             }
         } else if (kind === 'clear' && !day) {
-            for (i = 0; i < 28; i++) {
+            for (i = 0; i < 18; i++) {
                 out += '<i class="wp-fx-star" style="left:' + rnd(0, 100).toFixed(1) + '%;top:' + rnd(0, 70).toFixed(1) + '%;animation-delay:-' +
                     rnd(0, 4).toFixed(1) + 's;animation-duration:' + rnd(2, 5).toFixed(1) + 's"></i>';
             }
@@ -994,16 +994,21 @@
     function injectStyle() {
         if (document.getElementById('weather-plus-style')) return;
         var css = [
-            '.wp{position:relative;height:100%;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.25)}',
-            '.wp-frame{position:absolute;left:1.1em;top:1.1em;right:1.1em;bottom:1.1em;border-radius:1.6em;overflow:hidden}',
-            '.wp-frame .scroll{height:100%}',
-            '.wp-bg{position:absolute;left:0;top:0;right:0;bottom:0;background:#1c2f4a;opacity:var(--wp-a,.85)}',
-            '.wp-fx{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none}',
+            '.wp{position:relative;height:100%;color:#fff}',
+            '.wp-hero__temp,.wp-hero__desc{text-shadow:0 1px 3px rgba(0,0,0,.3)}',
+            '.wp-frame{position:absolute;left:1.1em;top:1.1em;right:1.1em;bottom:1.1em}',
+            '.wp-frame .scroll{height:100%;overflow:hidden}',
+            '.wp .scroll__body{will-change:transform;transition:transform .3s cubic-bezier(.25,.8,.25,1)!important}',
+            '.wp-bg{position:absolute;left:0;top:0;right:0;bottom:0;background:#1c2f4a;opacity:var(--wp-a,.85);border-radius:1.6em;overflow:hidden}',
+            '.wp-fx{position:absolute;left:0;top:0;right:0;bottom:0;overflow:hidden;pointer-events:none;border-radius:1.6em}',
             '.wp-bg:after{content:"";position:absolute;left:0;top:0;right:0;bottom:0;background:radial-gradient(60% 50% at 85% 0%,rgba(255,255,255,.18),transparent 70%)}',
             '.wp .scroll{position:relative;z-index:1}',
-            '.wp-body{padding:.7em 2.6em 3em 2.6em}',
-            '.wp-f{transition:box-shadow .12s}',
-            '.wp-f.focus{box-shadow:0 0 0 .25em #fff}',
+            '.wp-body{padding:.4em 2.6em 3em 2.6em}',
+            '.wp-f{transition:background-color .15s,color .15s}',
+            '.wp-f.focus{box-shadow:0 0 0 .22em #fff;background-color:rgba(255,255,255,.26)}',
+            '.wp-btn.focus{background-color:#fff;color:#000;box-shadow:none;text-shadow:none}',
+            '.wp-btn.focus small{opacity:.6}',
+            '.wp.wp-busy *{animation-play-state:paused!important}',
 
             /* верх */
             '.wp-top{display:flex;align-items:center;margin-bottom:1em}',
@@ -1108,7 +1113,7 @@
             '@keyframes wpflash{0%,92%,96%,100%{opacity:0}93%{opacity:.35}94%{opacity:.05}95%{opacity:.25}}',
 
             /* виджет в шапке */
-            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:1em!important;padding:.1em .5em!important;white-space:nowrap;line-height:1}',
+            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:.2em!important;padding:.1em .5em!important;white-space:nowrap;line-height:1}',
             '.wp-head svg{width:1.25em;height:1.25em;margin-right:.25em;flex-shrink:0}',
             '.wp-head span{font-size:1em;font-weight:inherit}'
         ].join('\n');
@@ -1142,7 +1147,7 @@
     }
 
     function WeatherPage(object) {
-        var scroll = new Lampa.Scroll({ mask: true, over: true, step: 250 });
+        var scroll = new Lampa.Scroll({ mask: false, over: true, step: 250 });
         var html = $('<div class="wp"></div>');
         var bg = $('<div class="wp-bg"></div>');
         var fx = $('<div class="wp-fx"></div>');
@@ -1167,8 +1172,8 @@
         function showLoading() {
             body.html('<div class="wp-loading"><i></i><div class="wp-stage">Загружаю погоду…</div></div>');
         }
-        // Одинаковые отступы окна со всех сторон: слева и сверху — от начала области страницы,
-        // справа и снизу — от краёв экрана (если область страницы шире или выше экрана, лишнее срезается).
+        // Окно по центру экрана: отступ слева/сверху считаем от края экрана (вместе с боковой и верхней панелями),
+        // справа и снизу делаем такими же от противоположных краёв.
         function layout() {
             if (dead) return;
             try {
@@ -1177,12 +1182,45 @@
                 var fs = parseFloat(window.getComputedStyle(el).fontSize) || 16, m = fs * 1.1;
                 var W = window.innerWidth || document.documentElement.clientWidth;
                 var Hh = window.innerHeight || document.documentElement.clientHeight;
-                var right = Math.max(m, r.right - (W - m));
-                var bottom = Math.max(m, r.bottom - (Hh - m));
+                var gx = Math.max(0, r.left) + m, gy = Math.max(0, r.top) + m;
+                var right = Math.max(m, r.right - (W - gx));
+                var bottom = Math.max(m, r.bottom - (Hh - gy));
                 frame.css({ left: m + 'px', top: m + 'px', right: Math.round(right) + 'px', bottom: Math.round(bottom) + 'px' });
             } catch (e) { }
         }
-        function onResize() { layout(); }
+        // Поднимаем верхний ряд (город / обновить) к верхнему краю окна: убираем лишний отступ, который добавляет прокрутка
+        function ty(el, stop) {
+            var sum = 0;
+            while (el && el !== stop && el.nodeType === 1) {
+                var tr = window.getComputedStyle(el).transform, mm;
+                if (tr && tr !== 'none') {
+                    mm = tr.match(/matrix(3d)?\(([^)]+)\)/);
+                    if (mm) { var v = mm[2].split(','); sum += parseFloat(v[mm[1] ? 13 : 5]) || 0; }
+                }
+                el = el.parentNode;
+            }
+            return sum;
+        }
+        function tighten() {
+            if (dead) return;
+            try {
+                body.css('margin-top', '0px');
+                var top = body.find('.wp-top')[0];
+                if (!top) return;
+                var fr = frame[0].getBoundingClientRect(), t = top.getBoundingClientRect();
+                var fs = parseFloat(window.getComputedStyle(html[0]).fontSize) || 16;
+                var stat = (t.top - fr.top) - ty(body[0], frame[0]);
+                var want = fs * .5;
+                if (stat > want + 2) body.css('margin-top', Math.round(want - stat) + 'px');
+            } catch (e) { }
+        }
+        var busyT = 0;
+        function busy() {
+            html.addClass('wp-busy');
+            clearTimeout(busyT);
+            busyT = setTimeout(function () { html.removeClass('wp-busy'); }, 700);
+        }
+        function onResize() { layout(); tighten(); }
         function stage(t) { body.find('.wp-stage').text(t); }
         function showError(msg) {
             body.html('<div class="wp-err"><div>Не удалось получить погоду</div><div class="wp-dbg">' + (msg || '') + '<br>' + DBG.join('<br>') + '</div>' +
@@ -1195,12 +1233,16 @@
         function finish() {
             try { self.activity.loader(false); self.activity.toggle(); } catch (e) { }
             layout();
+            tighten();
+            setTimeout(tighten, 120);
+            setTimeout(tighten, 600);
             refocus();
         }
 
         function bindItems() {
             body.find('.selector').on('hover:focus', function (e) {
                 last = e.target;
+                busy();
                 scroll.update($(e.target), true);
             });
             body.find('[data-act="city"]').on('hover:enter', function () {
@@ -1258,6 +1300,7 @@
             }, 0);
             setTimeout(layout, 400);
             window.addEventListener('resize', onResize);
+            try { html[0].addEventListener('wheel', busy, { passive: true }); } catch (e) { }
             return this.render();
         };
 
@@ -1292,6 +1335,7 @@
         this.stop = function () { };
         this.destroy = function () {
             dead = true;
+            clearTimeout(busyT);
             window.removeEventListener('resize', onResize);
             scroll.destroy();
             html.remove();
@@ -1346,18 +1390,10 @@
         headEl.css({ fontSize: '1.6em', fontWeight: '600' });
     }
 
-    // сдвигаем виджет в правый угол: его правый край выравнивается по правому краю окна погоды
+    // виджет стоит сразу за датой, без сдвига в угол
     function alignHead() {
         if (!headEl) return;
-        try {
-            headEl.css('transform', '');
-            var r = headEl[0].getBoundingClientRect();
-            if (!r.width) return;
-            var W = window.innerWidth || document.documentElement.clientWidth;
-            var fs = parseFloat(window.getComputedStyle(document.body).fontSize) || 16;
-            var shift = (W - r.right) - fs * 1.1;
-            if (shift > 1) headEl.css('transform', 'translateX(' + Math.round(shift) + 'px)');
-        } catch (e) { }
+        try { headEl.css('transform', ''); } catch (e) { }
     }
     var alignBound = false;
 
