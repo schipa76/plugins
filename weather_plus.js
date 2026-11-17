@@ -1113,7 +1113,7 @@
             '@keyframes wpflash{0%,92%,96%,100%{opacity:0}93%{opacity:.35}94%{opacity:.05}95%{opacity:.25}}',
 
             /* виджет в шапке */
-            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:0!important;padding:.08em .4em!important;border-radius:2em!important;white-space:nowrap;line-height:1}',
+            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:.6em!important;padding:.08em .4em!important;border-radius:2em!important;white-space:nowrap;line-height:1}',
             '.wp-head.focus{background:transparent!important;color:#fff!important;box-shadow:0 0 0 .11em #fff!important;text-shadow:none}',
             '.wp-head svg{width:1.25em;height:1.25em;margin-right:.25em;flex-shrink:0}',
             '.wp-head span{font-size:1em;font-weight:inherit}'
@@ -1211,8 +1211,8 @@
                 var fr = frame[0].getBoundingClientRect(), t = top.getBoundingClientRect();
                 var fs = parseFloat(window.getComputedStyle(html[0]).fontSize) || 16;
                 var stat = (t.top - fr.top) - ty(body[0], frame[0]);
-                var want = fs * .5;
-                if (stat > want + 2) body.css('margin-top', Math.round(want - stat) + 'px');
+                var want = fs * 1;
+                if (Math.abs(stat - want) > 2) body.css('margin-top', Math.round(want - stat) + 'px');
             } catch (e) { }
         }
         var busyT = 0;
