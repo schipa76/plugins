@@ -258,6 +258,21 @@
                     'outline-color:transparent !important;animation:none !important;transition:none !important;}';
             }).join('') +
 
+            // номер серии (плашка в левом верхнем углу) не должен налезать на рамку:
+            // сдвигаем его внутрь рамки (рамка .3em от размера плашки, у номера шрифт крупнее, поэтому .3em с запасом)
+            'body.fsc-ring .torrent-serial__episode{top:.3em !important;left:.3em !important;}' +
+
+            // страховка: родная инверсия выбранного пункта меню (белый фон, чёрный текст и значок)
+            // в левом меню и в боковом списке выбора
+            ['focus', 'traverse', 'hover'].map(function (s) {
+                var m = '.menu__item.' + s;
+
+                return m + '{background-color:#fff !important;color:#000 !important;}' +
+                    m + ' .menu__ico>img{filter:invert(1) !important;}' +
+                    m + ' .menu__ico [stroke]{stroke:#000 !important;}' +
+                    m + ' .menu__ico path[fill],' + m + ' .menu__ico rect[fill],' + m + ' .menu__ico circle[fill]{fill:#000 !important;}' +
+                    '.selectbox-item.' + s + '{background-color:#fff !important;color:#000 !important;}';
+            }).join('') +
 
             // иконки пунктов "Страница фильма" и "Трейлеры" в настройках: при наведении тёмные, как у родных
             '.settings-folder.focus .fsc-set-ico,.settings-folder.focus .fsc-set-ico *{color:#000 !important;}' +
@@ -572,6 +587,20 @@
     // по размеру: изображение или фон-картинка шириной от трети экрана и высотой от половины.
     var hiddenBackdrops = [];
 
+    // Служебные окна Lampa (левое меню, настройки, списки выбора, модальные окна, шапка) в поиске фона
+    // не участвуют: они тоже крупные, и правки фона убирали у них родные цвета выбранного пункта.
+    var UI_CHROME = '.menu, .wrap__left, .settings, .selectbox, .modal, .head, .navigation-bar';
+    var UI_ITEMS = '.menu__item, .settings-folder, .settings-param, .selectbox-item';
+
+    function isUiChrome(el) {
+        try {
+            if (el.closest && el.closest(UI_CHROME)) return true;
+            if (el.querySelector && el.querySelector(UI_ITEMS)) return true;
+        } catch (e) {}
+
+        return false;
+    }
+
     function restoreBackdrop() {
         try {
             $(hiddenBackdrops).removeClass('fsc-bg-hidden fsc-bg-clear fsc-bg-now');
@@ -600,6 +629,7 @@
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
+                if (isUiChrome(el)) return;
 
                 if (el.tagName === 'IMG') {
                     $(el).addClass('fsc-bg-hidden');
@@ -737,6 +767,7 @@
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
+                if (isUiChrome(el)) return;
 
                 var cs = window.getComputedStyle(el);
                 var bi = cs.backgroundImage || '';
