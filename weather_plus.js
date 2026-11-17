@@ -1368,30 +1368,14 @@
         openPage();
     }
 
-    // ищем место: сразу после кружка профиля (перед точками статуса)
-    function findAnchor() {
-        var sels = ['.open--profile', '.head__action--profile', '.head__profile', '.head__action[class*="profile"]'];
-        for (var i = 0; i < sels.length; i++) {
-            var n = $(sels[i]).not('.wp-head').filter(function () { return this.offsetWidth > 0; }).first();
-            if (n.length) return { mode: 'after', node: n };
-        }
-        var tm = $('.head__time').first();
-        if (tm.length) {
-            var p = tm.prev();
-            if (p.length && !p.hasClass('head__action') && !p.hasClass('head__actions')) return { mode: 'before', node: p };
-            return { mode: 'before', node: tm };
-        }
-        return null;
-    }
-
     function mountHead() {
         if (headEl && $.contains(document.body, headEl[0])) return true;
-        var anc = findAnchor();
+        var tm = $('.head__time').first();
         var host = $('.head__actions').first();
-        if (!anc && !host.length) return false;
+        if (!tm.length && !host.length) return false;
         headEl = $('<div class="head__action selector wp-head"></div>');
         headEl.on('hover:enter click', openPageOnce);
-        if (anc) { if (anc.mode === 'after') anc.node.after(headEl); else anc.node.before(headEl); }
+        if (tm.length) tm.after(headEl);
         else host.append(headEl);
         return true;
     }
@@ -1410,38 +1394,76 @@
         headEl.css({ fontSize: '1.6em', fontWeight: '600' });
     }
 
-    // одинаковые расстояния между иконками: берём типичный промежуток между обычными иконками шапки
-    // и выставляем такие же слева и справа от виджета
+    // Виджет визуально ставим между кружком профиля и точками статуса, не трогая структуру шапки:
+    // иконки сдвигаем влево, виджет ставим в освободившееся место, расстояния между всеми иконками одинаковые.
+    var shifted = [];
+    var HAS_TR = false;
+    try { HAS_TR = !!(window.CSS && CSS.supports && CSS.supports('translate', '1px')); } catch (e) { }
+    function shiftEl(n, x) {
+        if (HAS_TR) n.style.translate = x ? (Math.round(x) + 'px 0') : '';
+        else n.style.transform = x ? ('translateX(' + Math.round(x) + 'px)') : '';
+        if (x && shifted.indexOf(n) < 0) shifted.push(n);
+    }
+    function clearShift() {
+        shifted.forEach(function (n) { try { shiftEl(n, 0); } catch (e) { } });
+        shifted = [];
+    }
+    function visible(n) { return n.offsetWidth > 0 && n.offsetHeight > 0; }
+    function findProfile(el) {
+        var sels = ['.open--profile', '.head__action--profile', '.head__profile', '.head__action[class*="profile"]'];
+        for (var i = 0; i < sels.length; i++) {
+            var f = [].filter.call(document.querySelectorAll('.head ' + sels[i]), function (n) { return n !== el && visible(n); });
+            if (f.length) return f[0];
+        }
+        var acts = [].filter.call(document.querySelectorAll('.head .head__action'), function (n) { return n !== el && visible(n); });
+        acts.sort(function (a, b) { return a.getBoundingClientRect().left - b.getBoundingClientRect().left; });
+        var tm = document.querySelector('.head .head__time');
+        if (tm && visible(tm)) {
+            var tl = tm.getBoundingClientRect().left + 2;
+            acts = acts.filter(function (n) { return n.getBoundingClientRect().right <= tl; });
+        }
+        return acts.length ? acts[acts.length - 1] : null;
+    }
     function alignHead() {
         if (!headEl || !headEl[0].parentNode) return;
+        var el = headEl[0];
         try {
-            var el = headEl[0];
-            el.style.transform = '';
+            clearShift();
             el.style.marginLeft = '0px';
             el.style.marginRight = '0px';
-            var acts = [].filter.call(document.querySelectorAll('.head .head__action'), function (n) {
-                return n !== el && n.offsetWidth > 0 && n.offsetHeight > 0;
+            if (!visible(el)) return;
+            var profile = findProfile(el);
+            if (!profile) return;
+            var W = el.getBoundingClientRect().width;
+            el.style.marginRight = (-W) + 'px';          // в раскладке виджет места не занимает
+            var P = profile.getBoundingClientRect();
+            var icons = [].filter.call(document.querySelectorAll('.head .head__action'), function (n) {
+                return n !== el && visible(n) && n.getBoundingClientRect().right <= P.right + 1;
             });
-            acts.sort(function (a, b) { return a.getBoundingClientRect().left - b.getBoundingClientRect().left; });
+            icons.sort(function (a, b) { return a.getBoundingClientRect().left - b.getBoundingClientRect().left; });
             var gaps = [];
-            for (var i = 0; i < acts.length - 1; i++) {
-                var a = acts[i].getBoundingClientRect(), b = acts[i + 1].getBoundingClientRect();
-                var g = b.left - a.right;
-                if (g > 0 && g < a.width * 6 && Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < a.height) gaps.push(g);
+            for (var i = 0; i < icons.length - 1; i++) {
+                var ra = icons[i].getBoundingClientRect(), rb = icons[i + 1].getBoundingClientRect();
+                var g0 = rb.left - ra.right;
+                if (g0 > 0 && g0 < ra.width * 6) gaps.push(g0);
             }
-            if (!gaps.length) return;
             gaps.sort(function (x, y) { return x - y; });
-            var gap = gaps[Math.floor(gaps.length / 2)];
-            var prev = el.previousElementSibling, next = el.nextElementSibling, r;
-            if (prev) {
-                r = el.getBoundingClientRect();
-                el.style.marginLeft = Math.round(gap - (r.left - prev.getBoundingClientRect().right)) + 'px';
+            var gap = gaps.length ? gaps[Math.floor(gaps.length / 2)] : P.width * .6;
+            var wl = el.getBoundingClientRect();
+            // левый край первого элемента справа от профиля (точки статуса / время)
+            var B0 = Infinity, all = document.querySelectorAll('.head *');
+            for (var j = 0; j < all.length; j++) {
+                var n = all[j];
+                if (n === el || el.contains(n) || n.contains(el) || n.contains(profile) || profile.contains(n)) continue;
+                var r = n.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) continue;
+                if (r.left >= P.right - 1 && r.right <= wl.left + 2 && r.left < B0) B0 = r.left;
             }
-            if (next) {
-                r = el.getBoundingClientRect();
-                el.style.marginRight = Math.round(gap - (next.getBoundingClientRect().left - r.right)) + 'px';
-            }
-        } catch (e) { }
+            if (B0 === Infinity) B0 = wl.left;
+            var delta = W + 2 * gap - (B0 - P.right);
+            icons.forEach(function (n) { shiftEl(n, -delta); });
+            shiftEl(el, (P.right - delta + gap) - wl.left);
+        } catch (e) { clearShift(); dbg('align: ' + (e && e.message)); }
     }
     var alignBound = false;
 
@@ -1462,7 +1484,7 @@
             alignHead();
             setTimeout(alignHead, 400);
             setTimeout(alignHead, 2000);
-            if (!alignBound) { alignBound = true; window.addEventListener('resize', alignHead); }
+            if (!alignBound) { alignBound = true; window.addEventListener('resize', alignHead); setInterval(alignHead, 5000); }
         } catch (e) { dbg('head: ' + (e && e.message)); }
     }
 
@@ -1572,9 +1594,46 @@
         } catch (e) { dbg('settings: ' + (e && e.message)); }
     }
 
+
+    // Инверсия иконки пункта «Погода» при наведении (чёрная на белой плашке)
+    var invList = [];
+    function invReset() {
+        invList.forEach(function (n) {
+            try { n.style.removeProperty('fill'); n.style.removeProperty('stroke'); n.style.removeProperty('color'); } catch (e) { }
+        });
+        invList = [];
+    }
+    function invApply(item) {
+        [].forEach.call(item.querySelectorAll('svg, svg *'), function (n) {
+            try {
+                n.style.setProperty('fill', n.getAttribute && n.getAttribute('fill') === 'none' ? 'none' : '#000', 'important');
+                var st = n.getAttribute && n.getAttribute('stroke');
+                if (st && st !== 'none') n.style.setProperty('stroke', '#000', 'important');
+                n.style.setProperty('color', '#000', 'important');
+                invList.push(n);
+            } catch (e) { }
+        });
+    }
+    function isWeatherItem(item) {
+        if (!item) return false;
+        if (item.getAttribute('data-component') === 'weather_plus' || item.getAttribute('data-action') === 'weather_plus') return true;
+        if (!/settings-folder|menu__item/.test(item.className || '')) return false;
+        return /^Погода\+?$/.test((item.textContent || '').replace(/\s+/g, ' ').trim());
+    }
+    function bindInvert() {
+        try {
+            $(document).on('hover:focus', '.selector', function (e) {
+                invReset();
+                var item = e.currentTarget || e.target;
+                if (isWeatherItem(item) && item.querySelector('svg')) invApply(item);
+            });
+        } catch (e) { }
+    }
+
     function init() {
         Lampa.Component.add('weather_plus', WeatherPage);
         injectStyle();
+        bindInvert();
         $('.menu [data-action="weather_plus"]').remove();
         addSettings();
         setTimeout(function () { updateHead(false); }, 1500);
