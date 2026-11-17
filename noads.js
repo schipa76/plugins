@@ -58,6 +58,27 @@
         } catch (e) { /* ignore */ }
     }
 
+    /* ------------------------------------------------------------------ */
+    /*  Инверсия иконок бокового меню при наведении / фокусе пульта        */
+    /* ------------------------------------------------------------------ */
+
+    function injectMenuIconCSS() {
+        if (document.getElementById('noads-menu-icon-style')) return;
+        var css =
+            '.menu__item .menu__ico{transition:filter .15s ease}' +
+            '.menu__item.focus .menu__ico,' +
+            '.menu__item.traverse .menu__ico,' +
+            '.menu__item:hover .menu__ico{filter:invert(1)}';
+        var style = document.createElement('style');
+        style.id = 'noads-menu-icon-style';
+        style.type = 'text/css';
+        style.appendChild(document.createTextNode(css));
+        (document.head || document.documentElement).appendChild(style);
+    }
+
+    // работает независимо от переключателя «Блокировать рекламу»
+    try { injectMenuIconCSS(); } catch (e) { /* ignore */ }
+
     if (!ENABLED) {
         log('выключен в настройках, v' + VERSION);
         onReady(addSettings);

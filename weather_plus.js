@@ -1113,10 +1113,13 @@
             '@keyframes wpflash{0%,92%,96%,100%{opacity:0}93%{opacity:.35}94%{opacity:.05}95%{opacity:.25}}',
 
             /* виджет в шапке */
-            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:.6em!important;padding:.08em .4em!important;border-radius:2em!important;white-space:nowrap;line-height:1}',
+            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;padding:.04em .28em!important;border-radius:2em!important;white-space:nowrap;line-height:1}',
             '.wp-head.focus{background:transparent!important;color:#fff!important;box-shadow:0 0 0 .11em #fff!important;text-shadow:none}',
             '.wp-head svg{width:1.25em;height:1.25em;margin-right:.25em;flex-shrink:0}',
-            '.wp-head span{font-size:1em;font-weight:inherit}'
+            '.wp-head span{font-size:1em;font-weight:inherit}',
+            '.settings-folder[data-component="weather_plus"] .settings-folder__icon svg,.settings-folder[data-component="weather_plus"] .settings-folder__icon svg *{fill:#fff!important;color:#fff!important}',
+            '.settings-folder.focus[data-component="weather_plus"] .settings-folder__icon svg,.settings-folder.focus[data-component="weather_plus"] .settings-folder__icon svg *{fill:#000!important;color:#000!important}',
+            '.menu__item.focus[data-action="weather_plus"] .menu__ico svg,.menu__item.focus[data-action="weather_plus"] .menu__ico svg *{fill:#000!important;color:#000!important}'
         ].join('\n');
         var st = document.createElement('style');
         st.id = 'weather-plus-style';
@@ -1365,14 +1368,30 @@
         openPage();
     }
 
+    // ищем место: сразу после кружка профиля (перед точками статуса)
+    function findAnchor() {
+        var sels = ['.open--profile', '.head__action--profile', '.head__profile', '.head__action[class*="profile"]'];
+        for (var i = 0; i < sels.length; i++) {
+            var n = $(sels[i]).not('.wp-head').filter(function () { return this.offsetWidth > 0; }).first();
+            if (n.length) return { mode: 'after', node: n };
+        }
+        var tm = $('.head__time').first();
+        if (tm.length) {
+            var p = tm.prev();
+            if (p.length && !p.hasClass('head__action') && !p.hasClass('head__actions')) return { mode: 'before', node: p };
+            return { mode: 'before', node: tm };
+        }
+        return null;
+    }
+
     function mountHead() {
         if (headEl && $.contains(document.body, headEl[0])) return true;
-        var tm = $('.head__time').first();
+        var anc = findAnchor();
         var host = $('.head__actions').first();
-        if (!tm.length && !host.length) return false;
+        if (!anc && !host.length) return false;
         headEl = $('<div class="head__action selector wp-head"></div>');
         headEl.on('hover:enter click', openPageOnce);
-        if (tm.length) tm.after(headEl);
+        if (anc) { if (anc.mode === 'after') anc.node.after(headEl); else anc.node.before(headEl); }
         else host.append(headEl);
         return true;
     }
@@ -1391,10 +1410,38 @@
         headEl.css({ fontSize: '1.6em', fontWeight: '600' });
     }
 
-    // виджет стоит сразу за датой, без сдвига в угол
+    // одинаковые расстояния между иконками: берём типичный промежуток между обычными иконками шапки
+    // и выставляем такие же слева и справа от виджета
     function alignHead() {
-        if (!headEl) return;
-        try { headEl.css('transform', ''); } catch (e) { }
+        if (!headEl || !headEl[0].parentNode) return;
+        try {
+            var el = headEl[0];
+            el.style.transform = '';
+            el.style.marginLeft = '0px';
+            el.style.marginRight = '0px';
+            var acts = [].filter.call(document.querySelectorAll('.head .head__action'), function (n) {
+                return n !== el && n.offsetWidth > 0 && n.offsetHeight > 0;
+            });
+            acts.sort(function (a, b) { return a.getBoundingClientRect().left - b.getBoundingClientRect().left; });
+            var gaps = [];
+            for (var i = 0; i < acts.length - 1; i++) {
+                var a = acts[i].getBoundingClientRect(), b = acts[i + 1].getBoundingClientRect();
+                var g = b.left - a.right;
+                if (g > 0 && g < a.width * 6 && Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < a.height) gaps.push(g);
+            }
+            if (!gaps.length) return;
+            gaps.sort(function (x, y) { return x - y; });
+            var gap = gaps[Math.floor(gaps.length / 2)];
+            var prev = el.previousElementSibling, next = el.nextElementSibling, r;
+            if (prev) {
+                r = el.getBoundingClientRect();
+                el.style.marginLeft = Math.round(gap - (r.left - prev.getBoundingClientRect().right)) + 'px';
+            }
+            if (next) {
+                r = el.getBoundingClientRect();
+                el.style.marginRight = Math.round(gap - (next.getBoundingClientRect().left - r.right)) + 'px';
+            }
+        } catch (e) { }
     }
     var alignBound = false;
 

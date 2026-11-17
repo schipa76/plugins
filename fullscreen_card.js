@@ -248,13 +248,21 @@
             ['torrent-item', 'torrent-file', 'torrent-serial'].map(function (t) {
                 var f = 'body.fsc-ring .' + t + '.focus';
 
+                // в окне "Файлы" список обрезается по краям, поэтому у файлов и серий рамка рисуется внутри плашки
+                var off = t === 'torrent-item' ? '.3em' : '-.3em';
+
                 return f + '{box-shadow:none !important;border-color:transparent !important;' +
-                    'outline:.3em solid var(--fsc-ring) !important;outline-offset:.3em !important;animation:none !important;' +
+                    'outline:.3em solid var(--fsc-ring) !important;outline-offset:' + off + ' !important;animation:none !important;' +
                     'transition:box-shadow 0s,border-color 0s,outline 0s,outline-offset 0s,opacity 0s !important;}' +
                     f + '::before,' + f + '::after{box-shadow:none !important;border-color:transparent !important;' +
                     'outline-color:transparent !important;animation:none !important;transition:none !important;}';
             }).join('') +
 
+
+            // иконки пунктов "Страница фильма" и "Трейлеры" в настройках: при наведении тёмные, как у родных
+            '.settings-folder.focus .fsc-set-ico,.settings-folder.focus .fsc-set-ico *{color:#000 !important;}' +
+            '.settings-folder.focus .fsc-set-ico [stroke]{stroke:#000 !important;}' +
+            '.settings-folder.focus .fsc-set-ico [fill]:not([fill="none"]){fill:#000 !important;}' +
 
             // у карточек в списках своя плашка рейтинга: родную плашку Lampa под ней не показываем
             '.fsc-has-rate .card__vote{display:none !important;}' +
@@ -1483,13 +1491,13 @@
             Lampa.SettingsApi.addComponent({
                 component: 'fullscreen_card',
                 name: 'Страница фильма',
-                icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 15h18" stroke="currentColor" stroke-width="2"/></svg>'
+                icon: '<svg class="fsc-set-ico" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/><path d="M3 15h18" stroke="currentColor" stroke-width="2"/></svg>'
             });
 
             Lampa.SettingsApi.addComponent({
                 component: 'fsc_trailers',
                 name: 'Трейлеры',
-                icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>'
+                icon: '<svg class="fsc-set-ico" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><path d="M10 9l5 3-5 3V9z" fill="currentColor"/></svg>'
             });
 
             queueParam({
@@ -1897,7 +1905,11 @@
         return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
     }
 
+    // круг размером с круг кнопки "Торренты" и треугольник, вырезанный внутри него
+    var PLAY_CIRCLE = 'Плей в круге';
+
     var ICONS = [
+        { name: PLAY_CIRCLE, svg: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path fill-rule="evenodd" d="M12 .8a11.2 11.2 0 1 0 0 22.4A11.2 11.2 0 0 0 12 .8zM9.2 7.2v9.6L17.4 12 9.2 7.2z"/></svg>' },
         { name: 'Плей', svg: ico('<polygon points="6 4 20 12 6 20 6 4"/>') },
         { name: 'Онлайн', svg: ico('<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>') },
         { name: 'Фильм', svg: ico('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4l2 5M14 4l2 5"/>') },
@@ -2046,7 +2058,8 @@
             ids.forEach(function (id) {
                 var b = items[id];
                 b.toggleClass('fsc-btn-hide', hide.indexOf(id) !== -1);
-                applyIcon(b, store('fsc_btn_icons', {})[id]);
+                // у кнопки "Смотреть" по умолчанию треугольник в круге, как у кнопки "Торренты"
+                applyIcon(b, store('fsc_btn_icons', {})[id] || (/^view--online/.test(id) ? PLAY_CIRCLE : ''));
 
                 if (titles[id]) {
                     var sp = b.find('span').first();
