@@ -1113,7 +1113,8 @@
             '@keyframes wpflash{0%,92%,96%,100%{opacity:0}93%{opacity:.35}94%{opacity:.05}95%{opacity:.25}}',
 
             /* виджет в шапке */
-            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:.2em!important;padding:.1em .5em!important;white-space:nowrap;line-height:1}',
+            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;margin-left:0!important;padding:.2em .7em!important;border-radius:2em!important;white-space:nowrap;line-height:1}',
+            '.wp-head.focus{background:transparent!important;color:#fff!important;box-shadow:0 0 0 .07em #fff!important;text-shadow:none}',
             '.wp-head svg{width:1.25em;height:1.25em;margin-right:.25em;flex-shrink:0}',
             '.wp-head span{font-size:1em;font-weight:inherit}'
         ].join('\n');
@@ -1183,8 +1184,8 @@
                 var W = window.innerWidth || document.documentElement.clientWidth;
                 var Hh = window.innerHeight || document.documentElement.clientHeight;
                 var gx = Math.max(0, r.left) + m, gy = Math.max(0, r.top) + m;
-                var right = Math.max(m, r.right - (W - gx));
-                var bottom = Math.max(m, r.bottom - (Hh - gy));
+                var right = Math.max(m, r.right - (W - gx * .7));
+                var bottom = Math.max(m, r.bottom - (Hh - gy * .7));
                 frame.css({ left: m + 'px', top: m + 'px', right: Math.round(right) + 'px', bottom: Math.round(bottom) + 'px' });
             } catch (e) { }
         }
