@@ -262,17 +262,29 @@
             // сдвигаем его внутрь рамки (рамка .3em от размера плашки, у номера шрифт крупнее, поэтому .3em с запасом)
             'body.fsc-ring .torrent-serial__episode{top:.3em !important;left:.3em !important;}' +
 
-            // страховка: родная инверсия выбранного пункта меню (белый фон, чёрный текст и значок)
-            // в левом меню и в боковом списке выбора
-            ['focus', 'traverse', 'hover'].map(function (s) {
-                var m = '.menu__item.' + s;
-
+            // инверсия выбранного пультом пункта во всех меню: белый фон, чёрный текст и значок.
+            // Только фокус (.focus), без нажатия и без наведения мышью
+            ['.menu__item.focus', '.menu__item.traverse', '.settings-folder.focus', '.settings-param.focus',
+                '.selectbox-item.focus', '.head__action.focus', '.modal__button.focus', '.navigation-bar__item.focus'
+            ].map(function (m) {
                 return m + '{background-color:#fff !important;color:#000 !important;}' +
-                    m + ' .menu__ico>img{filter:invert(1) !important;}' +
-                    m + ' .menu__ico [stroke]{stroke:#000 !important;}' +
-                    m + ' .menu__ico path[fill],' + m + ' .menu__ico rect[fill],' + m + ' .menu__ico circle[fill]{fill:#000 !important;}' +
-                    '.selectbox-item.' + s + '{background-color:#fff !important;color:#000 !important;}';
+                    m + ' [stroke]:not([stroke="none"]){stroke:#000 !important;}' +
+                    m + ' path[fill]:not([fill="none"]),' + m + ' rect[fill]:not([fill="none"]),' +
+                    m + ' circle[fill]:not([fill="none"]),' + m + ' polygon[fill]:not([fill="none"]){fill:#000 !important;}';
             }).join('') +
+            '.menu__item.focus .menu__ico>img,.menu__item.traverse .menu__ico>img{filter:invert(1) !important;}' +
+
+            // цветные плашки в списке торрентов: раздают, качают, битрейт, размер
+            'body.fsc-torrent .torrent-item__seeds span,' +
+            'body.fsc-torrent .torrent-item__grabs span,' +
+            'body.fsc-torrent .torrent-item__bitrate span,' +
+            'body.fsc-torrent .torrent-item__size{' +
+                'display:inline-block;padding:.05em .5em;border-radius:.35em;border:.12em solid;font-weight:600;line-height:1.35;' +
+            '}' +
+            'body.fsc-torrent .torrent-item__seeds span{color:#ffb74d !important;background:rgba(255,167,38,.2);border-color:#ffa726;}' +
+            'body.fsc-torrent .torrent-item__grabs span{color:#8ab4ff !important;background:rgba(100,140,255,.2);border-color:#6c8cff;}' +
+            'body.fsc-torrent .torrent-item__bitrate span{color:#5eead4 !important;background:rgba(38,198,176,.2);border-color:#26c6b0;}' +
+            'body.fsc-torrent .torrent-item__size{color:#5eead4 !important;background:rgba(38,198,176,.2);border-color:#26c6b0;}' +
 
             // иконки пунктов "Страница фильма" и "Трейлеры" в настройках: при наведении тёмные, как у родных
             '.settings-folder.focus .fsc-set-ico,.settings-folder.focus .fsc-set-ico *{color:#000 !important;}' +
