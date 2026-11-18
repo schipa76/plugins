@@ -4,7 +4,7 @@
   // ===== 1. Метаданные и константы =====
   var MANIFEST = {
     type: 'other',
-    version: '1.0.0',
+    version: '1.0.2',
     name: 'КиноРулетка',
     description: 'Случайный выбор фильма или сериала с фильтрами, пресетами и историей',
     component: 'cinemaroulette'
@@ -158,9 +158,11 @@
       '}',
       '/* --- Экран --- */',
       '.cr-screen { background: var(--cr-bg); color: var(--cr-text); font-family: var(--cr-font);',
-      '  font-size: var(--cr-fs); font-weight: 400; line-height: 1.5; min-height: 100%; padding: 24px 0 32px; box-sizing: border-box; }',
+      '  font-size: var(--cr-fs); font-weight: 400; line-height: 1.5; min-height: 100%; padding: 24px 0 96px; box-sizing: border-box; }',
       '.cr-screen * { box-sizing: border-box; }',
-      '.cr-scroll { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }',
+      '.cr-scroll { height: 100%; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;',
+      '  background: var(--cr-bg); scrollbar-width: none; }',
+      '.cr-scroll::-webkit-scrollbar { display: none; }',
       '.cr-wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }',
       '.cr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }',
       '.cr-head__text { min-width: 0; margin-right: 16px; }',
@@ -546,13 +548,13 @@
       { url: 'tv/popular', page: 1, type: 'tv' }, { url: 'tv/popular', page: 2, type: 'tv' },
       { url: 'tv/top_rated', page: 1, type: 'tv' }, { url: 'tv/top_rated', page: 2, type: 'tv' }
     ];
-    var left = jobs.length, finished = false, timer = null;
+    var left = jobs.length, finished = false, timer = null, remote = 0;
     function finish() {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
       POOL.loading = false;
-      POOL.loaded = true;
+      POOL.loaded = remote > 0; // каталог пуст — попробуем снова при следующем запуске
       var w = POOL.waiters;
       POOL.waiters = [];
       for (var i = 0; i < w.length; i++) { try { w[i](POOL.list); } catch (e) { console.log('[Cinemaroulette]', e); } }
@@ -562,6 +564,8 @@
       function settle() { if (done) return; done = true; left--; if (left <= 0) finish(); }
       var started = requestList(job.url, job.page, function (data) {
         var arr = data && data.results ? data.results : (isArray(data) ? data : []);
+        if (finished) return; // ответ пришёл после таймаута
+        remote += arr.length;
         poolAdd(arr, job.type);
         settle();
       }, settle);
@@ -682,20 +686,51 @@
     return false;
   }
 
+  // Собственный прокручиваемый контейнер: не зависит от версии Lampa.Scroll
   function createShell(ctx) {
-    var $ = window.$, Scroll = L('Scroll');
-    if (Scroll) {
-      ctx.scroll = new Scroll({ mask: true, over: true });
-      ctx.scroll.append(ctx.body[0]);
-      ctx.renderEl = ctx.scroll.render();
-    } else {
-      ctx.renderEl = $('<div class="cr-scroll"></div>').append(ctx.body);
+    var $ = window.$;
+    ctx.renderEl = $('<div class="cr-scroll"></div>').append(ctx.body);
+    ctx.onResize = function () { fitHeight(ctx); };
+    window.addEventListener('resize', ctx.onResize);
+  }
+
+  // Высота контейнера = от его верхней границы до низа окна
+  function fitHeight(ctx) {
+    var el = ctx.renderEl && ctx.renderEl[0];
+    if (!el) return;
+    var top = el.getBoundingClientRect().top;
+    if (top < 0 || top > window.innerHeight - 200) top = 0;
+    el.style.height = Math.max(200, window.innerHeight - top) + 'px';
+  }
+
+  // Режим ввода: при мыши/касании не прокручиваем экран за курсором
+  var INPUT = { keys: true, bound: false };
+  function trackInput() {
+    if (INPUT.bound || !window.addEventListener) return;
+    INPUT.bound = true;
+    window.addEventListener('keydown', function () { INPUT.keys = true; }, true);
+    window.addEventListener('mousemove', function () { INPUT.keys = false; }, true);
+    window.addEventListener('touchstart', function () { INPUT.keys = false; }, true);
+  }
+
+  // Прокрутка к элементу в фокусе: держим его в верхней четверти экрана
+  function scrollToEl(ctx, node, force) {
+    var box = ctx.renderEl && ctx.renderEl[0];
+    if (!force && !INPUT.keys) return;
+    if (!box || !node || !node.getBoundingClientRect) return;
+    var r = node.getBoundingClientRect(), b = box.getBoundingClientRect();
+    var margin = Math.round(box.clientHeight * 0.25);
+    if (r.top - b.top < margin || r.bottom > b.bottom - margin) {
+      var target = box.scrollTop + (r.top - b.top) - margin;
+      box.scrollTop = Math.max(0, target);
     }
   }
 
   function controllerStart(ctx) {
     var C = L('Controller'), A = L('Activity');
     ctx.active = true;
+    fitHeight(ctx);
+    setTimeout(function () { fitHeight(ctx); }, 300);
     if (!C) return;
     C.add('content', {
       toggle: function () { C.collectionSet(ctx.renderEl); C.collectionFocus(ctx.lastFocus || false, ctx.renderEl); },
@@ -713,6 +748,7 @@
     if (!ctx.active || !C) return;
     if (focusEl) ctx.lastFocus = focusEl;
     try { C.collectionSet(ctx.renderEl); C.collectionFocus(ctx.lastFocus || false, ctx.renderEl); } catch (e) { /* нет фокуса */ }
+    if (focusEl) scrollToEl(ctx, focusEl, true); // программный фокус — всегда показываем элемент
   }
 
   function bindAll(ctx, root, handler) {
@@ -723,8 +759,7 @@
       el.data('crb', 1);
       el.on('hover:focus', function () {
         ctx.lastFocus = this;
-        if (ctx.scroll && ctx.scroll.update) ctx.scroll.update(el, true);
-        else if (this.scrollIntoView) { try { this.scrollIntoView(false); } catch (e) { /* старый браузер */ } }
+        scrollToEl(ctx, this);
       });
       el.on('hover:enter', function () { handler(el.attr('data-act'), el.attr('data-val'), el); });
     });
@@ -732,7 +767,7 @@
 
   function RouletteComponent() {
     var self = this, $ = window.$;
-    var ctx = { scroll: null, body: null, renderEl: null, lastFocus: false, active: false };
+    var ctx = { body: null, renderEl: null, lastFocus: false, active: false, onResize: null };
     var filters = loadFilters(), stage = null, spinBtn = null;
     var spinning = false, destroyed = false, cancelSpin = null, current = null;
 
@@ -808,6 +843,7 @@
     }
 
     function resetFilters() {
+      if (spinning) return;
       var keepSurprise = filters.surprise;
       filters = defaultFilters();
       filters.surprise = keepSurprise;
@@ -902,7 +938,7 @@
       destroyed = true;
       ctx.active = false;
       if (cancelSpin) cancelSpin();
-      if (ctx.scroll && ctx.scroll.destroy) ctx.scroll.destroy();
+      if (ctx.onResize) window.removeEventListener('resize', ctx.onResize);
       if (ctx.renderEl && ctx.renderEl.remove) ctx.renderEl.remove();
       ctx.body = null;
     };
@@ -910,7 +946,7 @@
 
   function HistoryComponent() {
     var self = this, $ = window.$;
-    var ctx = { scroll: null, body: null, renderEl: null, lastFocus: false, active: false };
+    var ctx = { body: null, renderEl: null, lastFocus: false, active: false, onResize: null };
     var list = [];
 
     function itemsHtml() {
@@ -950,13 +986,17 @@
       if (self.activity && self.activity.loader) self.activity.loader(false);
       return self.render();
     };
-    this.start = function () { controllerStart(ctx); };
+    this.start = function () {
+      var fresh = loadHistory();
+      if (fresh.length !== list.length || (fresh[0] && list[0] && fresh[0].ts !== list[0].ts)) { fill(); ctx.lastFocus = false; }
+      controllerStart(ctx);
+    };
     this.pause = function () { ctx.active = false; };
     this.stop = function () { ctx.active = false; };
     this.render = function () { return ctx.renderEl; };
     this.destroy = function () {
       ctx.active = false;
-      if (ctx.scroll && ctx.scroll.destroy) ctx.scroll.destroy();
+      if (ctx.onResize) window.removeEventListener('resize', ctx.onResize);
       if (ctx.renderEl && ctx.renderEl.remove) ctx.renderEl.remove();
       ctx.body = null;
     };
@@ -1002,7 +1042,7 @@
     var $ = window.$;
     if (!$) return [];
     return $('.menu .menu__item').filter(function () {
-      return $(this).hasClass('cr-menu-item') || $.trim($(this).find('.menu__text').text()) === LANG.menu;
+      return $(this).hasClass('cr-menu-item') || String($(this).find('.menu__text').text()).replace(/^\s+|\s+$/g, '') === LANG.menu;
     });
   }
 
@@ -1042,7 +1082,11 @@
       SA.addParam({ component: SETTINGS_COMPONENT, param: { name: PREFIX + 'surprise', type: 'trigger', 'default': false },
         field: { name: LANG.setSurprise, description: LANG.setSurpriseDesc } });
       SA.addParam({ component: SETTINGS_COMPONENT, param: { name: PREFIX + 'open', type: 'button' },
-        field: { name: LANG.setOpen }, onChange: openRoulette });
+        field: { name: LANG.setOpen }, onChange: function () {
+          var C = L('Controller');
+          try { if (C) C.toggle('content'); } catch (e) { /* настройки закроются сами */ }
+          setTimeout(openRoulette, 50);
+        } });
       SA.addParam({ component: SETTINGS_COMPONENT, param: { name: PREFIX + 'reset', type: 'button' },
         field: { name: LANG.setReset, description: LANG.setResetDesc }, onChange: function () { store('history', []); noty(LANG.cleared); } });
     } catch (e) { console.log('[Cinemaroulette] settings error', e); }
@@ -1053,6 +1097,7 @@
     if (!window.$) { console.log('[Cinemaroulette] jQuery не найден, плагин не запущен'); return; }
     window.__cinemaroulette_inited__ = true;
     injectStyles();
+    trackInput();
     registerTemplates();
     var C = L('Component');
     if (C && typeof C.add === 'function') {
