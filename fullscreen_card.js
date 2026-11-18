@@ -262,6 +262,10 @@
             // номер серии лежит внутри рамки, а не торчит из угла плашки
             '.fsc-serial-badge{top:.3em !important;left:.3em !important;right:auto !important;bottom:auto !important;margin:0 !important;transform:none !important;}' +
 
+            // Иконки меню и настроек меняют цвет мгновенно: плавный переход цвета при уходе с пункта давал
+            // тёмную вспышку (иконка на долю секунды оставалась тёмной на тёмном фоне)
+            '.menu__ico,.menu__ico *,.settings-folder__icon,.settings-folder__icon *{transition:none !important;}' +
+
             // иконка пункта меню, которая при наведении сливается с фоном: инвертируется (см. UiFix)
             '.fsc-ico-inv{filter:invert(1) !important;transition:none !important;}' +
 
@@ -3415,22 +3419,46 @@
             return parseColor(cs.color);
         }
 
-        // уже есть инверсия от темы: на самой иконке, на картинке внутри неё или выше, до пункта меню
-        function themeInverted(ico, item) {
+        // Фильтры, которые мы поставили на иконки (чтобы вернуть всё как было, когда фокус уйдёт).
+        // Чужие инлайновые фильтры не трогаем.
+        var touched = [];
+
+        function restoreTouched() {
+            touched.forEach(function (el) {
+                try {
+                    el.style.removeProperty('filter');
+                    el.classList.remove('fsc-ico-inv');
+                } catch (e) {}
+            });
+
+            touched = [];
+        }
+
+        function setFilter(el, value) {
+            el.style.setProperty('filter', value, 'important');
+            touched.push(el);
+        }
+
+        function hasInvert(el) {
+            return (window.getComputedStyle(el).filter || '').indexOf('invert') !== -1;
+        }
+
+        // где уже есть инверсия от темы: на картинке внутри иконки, на самой иконке или выше (но не на самом пункте,
+        // иначе вместе с иконкой инвертировался бы и текст)
+        function invertedChain(ico, item) {
+            var res = [];
             var inner = ico.querySelector('svg, img');
 
-            if (inner && (window.getComputedStyle(inner).filter || '').indexOf('invert') !== -1) return true;
+            if (inner && hasInvert(inner)) res.push(inner);
 
             var cur = ico;
 
-            while (cur && cur.nodeType === 1) {
-                var f = window.getComputedStyle(cur).filter || '';
-                if (f.indexOf('invert') !== -1) return true;
-                if (cur === item) break;
+            while (cur && cur.nodeType === 1 && cur !== item) {
+                if (hasInvert(cur)) res.push(cur);
                 cur = cur.parentNode;
             }
 
-            return false;
+            return res;
         }
 
         // яркость цвета текста пункта: у выбранного пункта тема красит текст в тёмный, иконка должна быть такого же тона
@@ -3448,10 +3476,14 @@
             try { Lampa.Noty.show('Иконка меню: ' + msg); } catch (e) {}
         }
 
-        // Иконка по тону не совпадает с текстом выбранного пункта (светлая иконка на светлой плашке) - инвертируем.
-        // Если тема уже инвертирует сама, это учитывается, двойной инверсии не будет.
+        // Иконка по тону не совпадает с текстом выбранного пункта (светлая иконка на светлой плашке):
+        // - если тема сама инвертирует иконку, но получается неправильно (у иконки уже тёмный цвет),
+        //   инверсию темы отключаем;
+        // - если не инвертирует, добавляем инверсию.
         function evalMenu(item) {
             try {
+                restoreTouched();
+
                 var ico = item.querySelector(ICO_SEL);
 
                 if (!ico) {
@@ -3459,8 +3491,6 @@
                     return;
                 }
 
-                ico.classList.remove('fsc-ico-inv');
-                ico.style.removeProperty('filter');
                 ico.style.setProperty('transition', 'none', 'important');
 
                 var c = iconColor(ico);
@@ -3473,32 +3503,32 @@
 
                 if (!c) return diag('цвет иконки не определён: ' + String(ico.innerHTML || '').slice(0, 90));
 
+                var chain = invertedChain(ico, item);
                 var L = lum(c);
-                var inv = themeInverted(ico, item);
-                if (inv) L = 1 - L;
+                if (chain.length) L = 1 - L;
 
                 var T = textLum(item);
                 var need = T !== null ? Math.abs(L - T) > 0.5 : Math.abs(L - bgLum(item)) < 0.35;
+                var action = 'не трогаю';
 
                 if (need) {
-                    ico.classList.add('fsc-ico-inv');
-                    ico.style.setProperty('filter', 'invert(1)', 'important');
+                    if (chain.length) {
+                        chain.forEach(function (el) { setFilter(el, 'none'); });
+                        action = 'отключаю инверсию темы';
+                    } else {
+                        ico.classList.add('fsc-ico-inv');
+                        setFilter(ico, 'invert(1)');
+                        action = 'инвертирую';
+                    }
                 }
 
                 diag(describeEl(item) + (viaFallback ? ' (иконка без фигур)' : '') + ': иконка ' + L.toFixed(2) + ', текст ' + (T === null ? '?' : T.toFixed(2)) +
-                    ', тема ' + (inv ? 'инвертирует' : 'нет') + ' -> ' + (need ? 'инвертирую' : 'не трогаю'));
+                    ', тема ' + (chain.length ? 'инвертирует' : 'нет') + ' -> ' + action);
             } catch (e) {}
         }
 
-        function clearMenu(item) {
-            try {
-                var ico = item && item.querySelector(ICO_SEL);
-
-                if (ico) {
-                    ico.classList.remove('fsc-ico-inv');
-                    ico.style.removeProperty('filter');
-                }
-            } catch (e) {}
+        function clearMenu() {
+            restoreTouched();
         }
 
         function tickMenu() {
@@ -3524,10 +3554,9 @@
             if (started) return;
             started = true;
 
-            setInterval(function () {
-                fixSerials();
-                tickMenu();
-            }, 120);
+            // выбранный пункт меню отслеживаем чаще, чтобы иконка успевала поменяться без заметной вспышки
+            setInterval(tickMenu, 50);
+            setInterval(fixSerials, 150);
         }
 
         return { start: start };
