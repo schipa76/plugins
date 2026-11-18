@@ -4,7 +4,7 @@
   // ===== 1. Метаданные и константы =====
   var MANIFEST = {
     type: 'other',
-    version: '1.0.2',
+    version: '1.2.0',
     name: 'КиноРулетка',
     description: 'Случайный выбор фильма или сериала с фильтрами, пресетами и историей',
     component: 'cinemaroulette'
@@ -24,6 +24,14 @@
 
   var LANG = {
     title: 'КиноРулетка',
+    kicker: 'Сегодня в зале',
+    kickerHistory: 'Архив сеансов',
+    kickerEmpty: 'Сеанс не найден',
+    kickerHistoryEmpty: 'Зал пока пуст',
+    hall: 'Зал',
+    row: 'Ряд',
+    seat: 'Место',
+    session: 'Сеанс',
     menu: 'Рулетка',
     spin: 'Крутить',
     spinning: 'Крутим…',
@@ -145,151 +153,182 @@
     if (window.__cinemaroulette_css__) return;
     window.__cinemaroulette_css__ = true;
     var css = [
-      '/* --- Палитра и токены --- */',
+      '/* ====== Палитра «Кинозал»: тёплый тёмный зал + янтарь афиши ====== */',
       ':root {',
-      '  --cr-bg: #14161a; --cr-surface: #1d2026; --cr-surface-a: rgba(29,32,38,0.92);',
-      '  --cr-raise: #262a31; --cr-text: #e6e8ec; --cr-text-2: #9aa0aa;',
-      '  --cr-accent: #5b8def; --cr-accent-h: #7aa2f7; --cr-accent-soft: rgba(91,141,239,0.12);',
-      '  --cr-ok: #6fcf97; --cr-err: #eb7a7a;',
-      '  --cr-border: rgba(255,255,255,0.08); --cr-border-2: rgba(255,255,255,0.12); --cr-chip: rgba(255,255,255,0.06);',
-      '  --cr-fs: 16px; --cr-fs-s: 14px; --cr-fs-l: 13px; --cr-fs-h: 22px; --cr-fs-xl: 24px;',
+      '  --cr-bg: #12100e; --cr-bg-2: #0c0b0a; --cr-surface: #1c1915; --cr-surface-2: #24201b;',
+      '  --cr-text: #efe8dc; --cr-text-2: #a8a092; --cr-accent: #f0b54a; --cr-accent-h: #f7c76a;',
+      '  --cr-ink: #1b1408; --cr-accent-soft: rgba(240,181,74,0.12); --cr-red: #d46a4f; --cr-ok: #8fc79a;',
+      '  --cr-line: rgba(239,232,220,0.10); --cr-line-2: rgba(239,232,220,0.18);',
+      '  --cr-fs: 16px; --cr-fs-s: 14px; --cr-fs-l: 12px; --cr-fs-h: 22px; --cr-fs-xl: 40px;',
       '  --cr-poster: 220px; --cr-ring: 2px;',
       '  --cr-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;',
+      '  --cr-serif: Georgia, "Times New Roman", "Noto Serif", "Droid Serif", serif;',
+      '  --cr-mono: SFMono-Regular, Menlo, Consolas, "Roboto Mono", "Droid Sans Mono", monospace;',
       '}',
-      '/* --- Экран --- */',
-      '.cr-screen { background: var(--cr-bg); color: var(--cr-text); font-family: var(--cr-font);',
-      '  font-size: var(--cr-fs); font-weight: 400; line-height: 1.5; min-height: 100%; padding: 24px 0 96px; box-sizing: border-box; }',
-      '.cr-screen * { box-sizing: border-box; }',
-      '.cr-scroll { height: 100%; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch;',
-      '  background: var(--cr-bg); scrollbar-width: none; }',
+      '/* ====== Экран ====== */',
+      '.cr-scroll { height: 100%; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;',
+      '  background: radial-gradient(1200px 480px at 50% -160px, rgba(240,181,74,0.10), rgba(240,181,74,0) 70%), var(--cr-bg); }',
       '.cr-scroll::-webkit-scrollbar { display: none; }',
+      '.cr-screen { color: var(--cr-text); font-family: var(--cr-font); font-size: var(--cr-fs); line-height: 1.5;',
+      '  min-height: 100%; padding: 24px 0 96px; box-sizing: border-box; }',
+      '.cr-screen * { box-sizing: border-box; }',
       '.cr-wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }',
-      '.cr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }',
+      '/* ====== Афиша с лампочками ====== */',
+      '.cr-marquee { position: relative; padding: 32px; margin-bottom: 8px; border-radius: 16px;',
+      '  background: linear-gradient(180deg, #1f1b16, #16130f); border: 1px solid rgba(240,181,74,0.22);',
+      '  box-shadow: 0 16px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04); }',
+      '.cr-marquee:before, .cr-marquee:after { content: ""; position: absolute; left: 24px; right: 24px; height: 8px;',
+      '  background-image: radial-gradient(circle, rgba(247,199,106,0.85) 0, rgba(247,199,106,0.85) 2px, rgba(240,181,74,0.18) 3px, rgba(240,181,74,0) 4px);',
+      '  background-size: 24px 8px; background-repeat: repeat-x; background-position: center; opacity: 0.7; transition: opacity 0.25s ease; }',
+      '.cr-marquee:before { top: 10px; } .cr-marquee:after { bottom: 10px; }',
+      '.cr-marquee.cr-lit:before, .cr-marquee.cr-lit:after { animation: cr-lit 1.2s ease-out 1; }',
+      '@keyframes cr-lit { 0% { opacity: 0.3; } 35% { opacity: 1; } 100% { opacity: 0.7; } }',
+      '.cr-marquee__inner { display: flex; align-items: center; justify-content: space-between; }',
       '.cr-head__text { min-width: 0; margin-right: 16px; }',
-      '.cr-title { font-size: var(--cr-fs-xl); font-weight: 600; line-height: 1.3; }',
-      '.cr-sub { font-size: var(--cr-fs-s); color: var(--cr-text-2); margin-top: 8px; }',
-      '.cr-label { font-size: var(--cr-fs-l); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;',
-      '  color: var(--cr-text-2); margin: 16px 0 8px; }',
-      '/* --- Ряды и чипы --- */',
+      '.cr-kicker { font-family: var(--cr-mono); font-size: var(--cr-fs-l); letter-spacing: 0.24em; text-transform: uppercase; color: var(--cr-accent); }',
+      '.cr-title { font-family: var(--cr-serif); font-size: var(--cr-fs-xl); font-weight: 700; font-style: italic; line-height: 1.1;',
+      '  margin: 8px 0; letter-spacing: -0.01em; color: var(--cr-text); }',
+      '.cr-sub { font-family: var(--cr-mono); font-size: var(--cr-fs-l); color: var(--cr-text-2); letter-spacing: 0.04em; }',
+      '.cr-label { display: flex; align-items: center; font-family: var(--cr-mono); font-size: var(--cr-fs-l); letter-spacing: 0.2em;',
+      '  text-transform: uppercase; color: var(--cr-text-2); margin: 24px 0 8px; }',
+      '.cr-label:after { content: ""; flex: 1; height: 1px; margin-left: 16px; background: var(--cr-line); }',
+      '/* ====== Ряды, чипы, билетики-пресеты ====== */',
       '.cr-row { display: flex; flex-wrap: wrap; padding: 8px 8px 0; margin: 0 -8px; }',
       '.cr-row::-webkit-scrollbar { display: none; }',
-      '.cr-chip { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 40px; padding: 8px 16px;',
-      '  margin: 0 8px 8px 0; border-radius: 999px; background: var(--cr-chip); color: var(--cr-text);',
-      '  font-size: var(--cr-fs-s); line-height: 1.2; white-space: nowrap; cursor: pointer; user-select: none;',
-      '  outline: 2px solid transparent; outline-offset: 0;',
-      '  transition: background 0.2s ease, color 0.2s ease, outline-offset 0.15s ease; }',
-      '.cr-chip:hover { background: rgba(255,255,255,0.1); }',
-      '.cr-chip.cr-on { background: var(--cr-accent); color: #ffffff; }',
-      '.cr-chip--preset.cr-on { background: var(--cr-accent-soft); color: var(--cr-accent-h);',
-      '  box-shadow: inset 0 0 0 1px rgba(91,141,239,0.4); }',
-      '/* --- Селекторы фильтров --- */',
-      '.cr-select { flex-shrink: 0; display: inline-flex; flex-direction: column; justify-content: center; min-width: 128px;',
-      '  min-height: 48px; padding: 8px 16px; margin: 0 8px 8px 0; border-radius: 6px; background: var(--cr-chip);',
-      '  border: 1px solid var(--cr-border); cursor: pointer; user-select: none; outline: 2px solid transparent;',
-      '  outline-offset: 0; transition: background 0.2s ease, outline-offset 0.15s ease; }',
-      '.cr-select:hover { background: rgba(255,255,255,0.1); }',
-      '.cr-select__k { font-size: var(--cr-fs-l); color: var(--cr-text-2); line-height: 1.3; }',
-      '.cr-select__v { font-size: var(--cr-fs-s); font-weight: 600; line-height: 1.4; white-space: nowrap; }',
-      '.cr-select.cr-on .cr-select__v { color: var(--cr-accent-h); }',
-      '/* --- Кнопки --- */',
-      '.cr-actions { display: flex; flex-wrap: wrap; margin-top: 24px; }',
-      '.cr-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 24px;',
-      '  margin: 0 8px 8px 0; border-radius: 8px; border: 1px solid transparent; background: var(--cr-accent);',
-      '  color: #ffffff; font-size: var(--cr-fs); font-weight: 600; line-height: 1.2; white-space: nowrap; cursor: pointer;',
-      '  user-select: none; box-shadow: 0 4px 12px rgba(0,0,0,0.2); outline: 2px solid transparent; outline-offset: 0;',
-      '  transition: background 0.2s ease, transform 0.15s ease, opacity 0.2s ease, outline-offset 0.15s ease; }',
+      '.cr-chip { flex-shrink: 0; display: inline-flex; align-items: center; min-height: 40px; padding: 8px 16px; margin: 0 8px 8px 0;',
+      '  border-radius: 999px; border: 1px solid var(--cr-line-2); color: var(--cr-text); font-size: var(--cr-fs-s); line-height: 1.2;',
+      '  white-space: nowrap; cursor: pointer; user-select: none; outline: 2px solid transparent; outline-offset: 0;',
+      '  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.15s ease, outline-offset 0.15s ease; }',
+      '.cr-chip:hover { border-color: rgba(240,181,74,0.5); }',
+      '.cr-chip.cr-on { background: var(--cr-accent); border-color: var(--cr-accent); color: var(--cr-ink); font-weight: 600; }',
+      '.cr-chip--preset { border: 0; border-radius: 6px; padding: 8px 24px; font-weight: 600;',
+      '  background: radial-gradient(circle at 0 50%, rgba(0,0,0,0) 6px, var(--cr-surface-2) 7px) left / 51% 100% no-repeat,',
+      '    radial-gradient(circle at 100% 50%, rgba(0,0,0,0) 6px, var(--cr-surface-2) 7px) right / 51% 100% no-repeat; }',
+      '.cr-chip--preset.cr-on { color: var(--cr-ink);',
+      '  background: radial-gradient(circle at 0 50%, rgba(0,0,0,0) 6px, var(--cr-accent) 7px) left / 51% 100% no-repeat,',
+      '    radial-gradient(circle at 100% 50%, rgba(0,0,0,0) 6px, var(--cr-accent) 7px) right / 51% 100% no-repeat; }',
+      '/* ====== Табло фильтров ====== */',
+      '.cr-select { flex-shrink: 0; display: inline-flex; flex-direction: column; justify-content: center; min-width: 136px; min-height: 56px;',
+      '  padding: 8px 16px; margin: 0 8px 8px 0; border-radius: 8px; background: var(--cr-bg-2); border: 1px solid var(--cr-line);',
+      '  cursor: pointer; user-select: none; outline: 2px solid transparent; outline-offset: 0;',
+      '  transition: border-color 0.2s ease, transform 0.15s ease, outline-offset 0.15s ease; }',
+      '.cr-select:hover { border-color: rgba(240,181,74,0.4); }',
+      '.cr-select__k { font-family: var(--cr-mono); font-size: var(--cr-fs-l); letter-spacing: 0.12em; text-transform: uppercase; color: var(--cr-text-2); }',
+      '.cr-select__v { font-family: var(--cr-mono); font-size: var(--cr-fs-s); font-weight: 600; white-space: nowrap; color: var(--cr-text); margin-top: 4px; }',
+      '.cr-select.cr-on { border-color: rgba(240,181,74,0.45); }',
+      '.cr-select.cr-on .cr-select__v { color: var(--cr-accent); }',
+      '/* ====== Кнопки ====== */',
+      '.cr-actions { display: flex; flex-wrap: wrap; align-items: center; margin-top: 24px; }',
+      '.cr-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 12px 24px; margin: 0 8px 8px 0;',
+      '  border-radius: 8px; border: 1px solid transparent; background: var(--cr-accent); color: var(--cr-ink); font-size: var(--cr-fs);',
+      '  font-weight: 700; line-height: 1.2; white-space: nowrap; cursor: pointer; user-select: none; outline: 2px solid transparent; outline-offset: 0;',
+      '  box-shadow: 0 8px 24px rgba(240,181,74,0.22); transition: background 0.2s ease, transform 0.15s ease, opacity 0.2s ease, outline-offset 0.15s ease; }',
       '.cr-btn:hover, .cr-btn.focus { background: var(--cr-accent-h); transform: translateY(-1px); }',
       '.cr-btn:active { transform: translateY(0); }',
-      '.cr-btn--ghost { background: transparent; border-color: var(--cr-border-2); color: var(--cr-text); box-shadow: none; }',
-      '.cr-btn--ghost:hover, .cr-btn--ghost.focus { background: rgba(255,255,255,0.06); }',
+      '.cr-btn--spin { min-width: 200px; padding-left: 32px; padding-right: 32px; letter-spacing: 0.06em; text-transform: uppercase; }',
+      '.cr-btn--spin:before { content: ""; width: 0; height: 0; margin-right: 12px; border-style: solid; border-width: 7px 0 7px 11px;',
+      '  border-color: transparent transparent transparent var(--cr-ink); }',
+      '.cr-btn--ghost { background: transparent; border-color: var(--cr-line-2); color: var(--cr-text); font-weight: 600; box-shadow: none; }',
+      '.cr-btn--ghost:hover, .cr-btn--ghost.focus { background: rgba(239,232,220,0.06); border-color: rgba(239,232,220,0.3); }',
       '.cr-btn.cr-disabled { opacity: 0.5; cursor: default; transform: none; }',
-      '/* --- Фокус для пульта --- */',
-      '.cr-btn.focus, .cr-chip.focus, .cr-select.focus, .cr-hist__item.focus {',
-      '  outline: var(--cr-ring) solid var(--cr-accent-h); outline-offset: 3px; }',
-      '/* --- Рулетка (барабан) --- */',
+      '/* ====== Фокус с пульта ====== */',
+      '.cr-btn.focus, .cr-chip.focus, .cr-select.focus, .cr-hist__item.focus { outline: var(--cr-ring) solid var(--cr-accent-h); outline-offset: 3px; }',
+      '.cr-chip.focus, .cr-select.focus { transform: translateY(-1px); }',
+      '/* ====== Плёнка (вращение) ====== */',
       '.cr-stage { margin-top: 16px; }',
-      '.cr-reel { display: flex; align-items: center; padding: 16px; border-radius: 12px; background: var(--cr-surface);',
-      '  border: 1px solid var(--cr-border); box-shadow: 0 8px 24px rgba(0,0,0,0.3);',
-      '  transition: opacity 0.12s ease-out, transform 0.12s ease-out; }',
+      '.cr-reel { position: relative; display: flex; align-items: center; padding: 32px 24px; border-radius: 12px; background: var(--cr-bg-2);',
+      '  border: 1px solid var(--cr-line); box-shadow: 0 16px 32px rgba(0,0,0,0.35); transition: opacity 0.12s ease-out, transform 0.12s ease-out; }',
+      '.cr-reel:before, .cr-reel:after { content: ""; position: absolute; left: 16px; right: 16px; height: 8px; border-radius: 2px;',
+      '  background: repeating-linear-gradient(90deg, rgba(239,232,220,0.16) 0, rgba(239,232,220,0.16) 12px, rgba(0,0,0,0) 12px, rgba(0,0,0,0) 24px); }',
+      '.cr-reel:before { top: 10px; } .cr-reel:after { bottom: 10px; }',
       '.cr-reel.cr-flash { opacity: 0.6; transform: scale(0.98); transition: none; }',
-      '.cr-reel__poster { width: 72px; height: 108px; flex-shrink: 0; margin-right: 16px; border-radius: 8px;',
-      '  background: var(--cr-raise) center / cover no-repeat; }',
+      '.cr-reel__poster { width: 80px; height: 120px; flex-shrink: 0; margin-right: 24px; border-radius: 6px;',
+      '  background: var(--cr-surface-2) center / cover no-repeat; box-shadow: 0 0 0 4px #000; }',
       '.cr-reel__body { flex: 1; min-width: 0; }',
-      '.cr-reel__title { font-size: var(--cr-fs-h); font-weight: 600; line-height: 1.3; white-space: nowrap;',
-      '  overflow: hidden; text-overflow: ellipsis; }',
+      '.cr-reel__title { font-family: var(--cr-serif); font-size: var(--cr-fs-h); font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.cr-reel__meta { font-size: var(--cr-fs-s); color: var(--cr-text-2); margin-top: 8px; }',
-      '/* --- Карточка результата --- */',
-      '.cr-card { display: flex; align-items: flex-start; padding: 24px; border-radius: 12px; background: var(--cr-surface);',
-      '  border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }',
-      '@supports ((-webkit-backdrop-filter: blur(12px)) or (backdrop-filter: blur(12px))) {',
-      '  .cr-card, .cr-reel { background: var(--cr-surface-a); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }',
-      '}',
+      '/* ====== Билет (результат) ====== */',
+      '.cr-ticket { border-radius: 16px; background: var(--cr-surface); border: 1px solid rgba(240,181,74,0.18); box-shadow: 0 16px 32px rgba(0,0,0,0.35); }',
       '.cr-appear { animation: cr-appear 0.25s ease-out both; }',
       '@keyframes cr-appear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }',
+      '.cr-card { display: flex; align-items: flex-start; padding: 24px; }',
       '.cr-poster { width: var(--cr-poster); flex-shrink: 0; margin-right: 24px; }',
-      '.cr-poster__box { position: relative; padding-top: 150%; border-radius: 12px; overflow: hidden; background: var(--cr-raise);',
-      '  border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }',
-      '.cr-poster__box--hidden { background: linear-gradient(160deg, #262b35, #1b1e24); }',
+      '.cr-poster__box { position: relative; padding-top: 150%; border-radius: 10px; overflow: hidden; background: var(--cr-surface-2);',
+      '  border: 1px solid var(--cr-line); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }',
+      '.cr-poster__box--hidden { background: repeating-linear-gradient(135deg, #2a241d 0, #2a241d 12px, #221d17 12px, #221d17 24px); }',
       '.cr-poster__ph, .cr-poster__img { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }',
-      '.cr-poster__ph { display: flex; align-items: center; justify-content: center; font-size: 48px; font-weight: 600;',
-      '  color: var(--cr-text-2); }',
+      '.cr-poster__ph { display: flex; align-items: center; justify-content: center; font-family: var(--cr-serif); font-size: 64px; font-style: italic; color: var(--cr-accent); }',
       '.cr-poster__img { background: center / cover no-repeat; }',
       '.cr-info { flex: 1; min-width: 0; }',
-      '.cr-card__title { font-size: var(--cr-fs-xl); font-weight: 600; line-height: 1.3; margin-bottom: 8px; }',
-      '.cr-meta { font-size: var(--cr-fs-s); color: var(--cr-text-2); margin-bottom: 8px; }',
-      '.cr-rate { color: var(--cr-ok); font-weight: 600; }',
+      '.cr-card__title { font-family: var(--cr-serif); font-size: calc(var(--cr-fs-h) * 1.35); font-weight: 700; line-height: 1.15; margin: 0 0 8px; }',
+      '.cr-meta { font-size: var(--cr-fs-s); color: var(--cr-text-2); margin-bottom: 16px; }',
+      '.cr-rate { display: inline-block; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(143,199,154,0.5); color: var(--cr-ok);',
+      '  font-family: var(--cr-mono); font-weight: 600; line-height: 22px; }',
       '.cr-tags { margin-bottom: 8px; }',
-      '.cr-tag { display: inline-block; padding: 0 8px; margin: 0 8px 8px 0; border-radius: 6px; background: var(--cr-chip);',
-      '  font-size: var(--cr-fs-l); line-height: 24px; color: var(--cr-text-2); }',
-      '.cr-desc { font-size: var(--cr-fs); line-height: 1.5; color: var(--cr-text); overflow: hidden;',
-      '  display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; max-height: 10.5em; }',
-      '.cr-note { font-size: var(--cr-fs-s); color: var(--cr-text-2); margin-top: 8px; }',
-      '/* --- Подсказка (пустой пул) --- */',
-      '.cr-hint { padding: 32px 24px; text-align: center; border-radius: 12px; background: var(--cr-surface);',
-      '  border: 1px solid var(--cr-border); }',
-      '.cr-hint__title { font-size: var(--cr-fs-h); font-weight: 600; margin-bottom: 8px; }',
-      '.cr-hint__title--warn { color: var(--cr-err); }',
+      '.cr-tag { display: inline-block; padding: 0 8px; margin: 0 8px 8px 0; border-radius: 4px; background: var(--cr-accent-soft); color: var(--cr-accent);',
+      '  font-family: var(--cr-mono); font-size: var(--cr-fs-l); letter-spacing: 0.06em; text-transform: uppercase; line-height: 24px; }',
+      '.cr-desc { font-size: var(--cr-fs); line-height: 1.6; color: var(--cr-text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6;',
+      '  -webkit-box-orient: vertical; max-height: 9.6em; }',
+      '.cr-note { font-size: var(--cr-fs-s); color: var(--cr-red); margin-top: 8px; font-style: italic; }',
+      '.cr-stub { position: relative; display: flex; flex-wrap: wrap; align-items: center; padding: 16px 24px; border-top: 2px dashed rgba(239,232,220,0.14);',
+      '  background: rgba(240,181,74,0.05); border-radius: 0 0 16px 16px; }',
+      '.cr-stub:before, .cr-stub:after { content: ""; position: absolute; top: -13px; width: 24px; height: 24px; border-radius: 50%; background: var(--cr-bg); }',
+      '.cr-stub:before { left: -13px; } .cr-stub:after { right: -13px; }',
+      '.cr-stub__cell { margin-right: 32px; }',
+      '.cr-stub__k { display: block; font-family: var(--cr-mono); font-size: var(--cr-fs-l); letter-spacing: 0.16em; text-transform: uppercase; color: var(--cr-text-2); }',
+      '.cr-stub__v { display: block; font-family: var(--cr-mono); font-size: var(--cr-fs-h); font-weight: 700; color: var(--cr-accent); line-height: 1.2; }',
+      '.cr-barcode { flex: 1; min-width: 96px; height: 40px; margin-left: auto; max-width: 200px; opacity: 0.5;',
+      '  background: repeating-linear-gradient(90deg, var(--cr-text) 0, var(--cr-text) 2px, rgba(0,0,0,0) 2px, rgba(0,0,0,0) 5px, var(--cr-text) 5px, var(--cr-text) 6px, rgba(0,0,0,0) 6px, rgba(0,0,0,0) 10px); }',
+      '/* ====== Подсказка (пустой пул) ====== */',
+      '.cr-hint { padding: 40px 24px; text-align: center; border-radius: 16px; background: var(--cr-surface); border: 1px dashed rgba(212,106,79,0.45); }',
+      '.cr-hint .cr-kicker { color: var(--cr-red); }',
+      '.cr-hint__title { font-family: var(--cr-serif); font-size: var(--cr-fs-h); font-weight: 700; margin: 8px 0; }',
       '.cr-hint__text { color: var(--cr-text-2); font-size: var(--cr-fs-s); }',
       '.cr-hint .cr-actions { justify-content: center; margin-top: 16px; }',
-      '/* --- История --- */',
-      '.cr-hist { margin-top: 8px; }',
-      '.cr-hist__item { display: flex; align-items: center; padding: 8px; margin-bottom: 8px; border-radius: 12px;',
-      '  background: var(--cr-surface); border: 1px solid var(--cr-border); cursor: pointer; outline: 2px solid transparent;',
-      '  outline-offset: 0; transition: background 0.2s ease, outline-offset 0.15s ease; }',
-      '.cr-hist__item:hover, .cr-hist__item.focus { background: #23262d; }',
-      '.cr-hist__poster { width: 48px; height: 72px; flex-shrink: 0; margin-right: 16px; border-radius: 8px;',
-      '  background: var(--cr-raise) center / cover no-repeat; }',
+      '/* ====== История — корешки билетов ====== */',
+      '.cr-hist { margin-top: 16px; }',
+      '.cr-hist__item { display: flex; align-items: center; padding: 8px 8px 8px 8px; margin-bottom: 8px; border-radius: 10px; background: var(--cr-surface);',
+      '  border: 1px solid var(--cr-line); cursor: pointer; outline: 2px solid transparent; outline-offset: 0;',
+      '  transition: background 0.2s ease, border-color 0.2s ease, outline-offset 0.15s ease; }',
+      '.cr-hist__item:hover, .cr-hist__item.focus { background: var(--cr-surface-2); border-color: rgba(240,181,74,0.35); }',
+      '.cr-hist__poster { width: 48px; height: 72px; flex-shrink: 0; margin-right: 16px; border-radius: 6px; background: var(--cr-surface-2) center / cover no-repeat; }',
       '.cr-hist__body { flex: 1; min-width: 0; }',
-      '.cr-hist__title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
+      '.cr-hist__title { font-family: var(--cr-serif); font-size: calc(var(--cr-fs) * 1.1); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
       '.cr-hist__meta { font-size: var(--cr-fs-s); color: var(--cr-text-2); }',
-      '.cr-hist__date { font-size: var(--cr-fs-l); color: var(--cr-text-2); margin-left: 16px; white-space: nowrap; }',
-      '/* --- Планшет --- */',
-      '@media (max-width: 960px) { :root { --cr-poster: 180px; } }',
-      '/* --- Мобильные --- */',
+      '.cr-hist__date { align-self: stretch; display: flex; align-items: center; padding: 0 16px 0 24px; margin-left: 16px; border-left: 2px dashed rgba(239,232,220,0.12);',
+      '  font-family: var(--cr-mono); font-size: var(--cr-fs-l); color: var(--cr-accent); white-space: nowrap; }',
+      '/* ====== Планшет ====== */',
+      '@media (max-width: 960px) { :root { --cr-poster: 180px; --cr-fs-xl: 34px; } }',
+      '/* ====== Мобильные ====== */',
       '@media (max-width: 480px) {',
+      '  :root { --cr-fs-xl: 30px; }',
       '  .cr-wrap { padding: 0 16px; }',
-      '  .cr-row { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;',
-      '    margin: 0 -16px; padding: 8px 16px 0; }',
+      '  .cr-marquee { padding: 32px 16px 28px; }',
+      '  .cr-marquee__inner { flex-direction: column; align-items: flex-start; }',
+      '  .cr-marquee__inner .cr-btn { margin-top: 16px; }',
+      '  .cr-row { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; margin: 0 -16px; padding: 8px 16px 0; }',
       '  .cr-card { flex-direction: column; align-items: stretch; padding: 16px; }',
       '  .cr-poster { width: 64%; max-width: 240px; margin: 0 auto 16px; }',
       '  .cr-actions .cr-btn { flex: 1 1 auto; }',
       '  .cr-chip, .cr-select { min-height: 44px; }',
+      '  .cr-stub { padding: 16px; } .cr-stub__cell { margin-right: 24px; } .cr-barcode { display: none; }',
       '  .cr-hist__date { display: none; }',
       '}',
-      '/* --- TV (крупнее ×1.3, заметнее фокус) --- */',
+      '/* ====== TV: крупнее ×1.3, заметнее фокус ====== */',
       '@media (min-width: 1200px) {',
-      '  :root { --cr-fs: 20px; --cr-fs-s: 18px; --cr-fs-l: 16px; --cr-fs-h: 28px; --cr-fs-xl: 32px;',
-      '    --cr-poster: 280px; --cr-ring: 3px; }',
+      '  :root { --cr-fs: 20px; --cr-fs-s: 18px; --cr-fs-l: 15px; --cr-fs-h: 28px; --cr-fs-xl: 52px; --cr-poster: 280px; --cr-ring: 3px; }',
       '  .cr-wrap { max-width: 1240px; padding: 0 32px; }',
-      '  .cr-card { padding: 32px; }',
+      '  .cr-marquee { padding: 40px; }',
+      '  .cr-card { padding: 32px; } .cr-stub { padding: 24px 32px; }',
       '  .cr-btn { padding: 16px 32px; min-height: 56px; }',
-      '  .cr-chip { padding: 8px 24px; min-height: 48px; }',
-      '  .cr-select { min-height: 64px; min-width: 160px; }',
+      '  .cr-chip { padding: 8px 24px; min-height: 48px; } .cr-chip--preset { padding: 8px 32px; }',
+      '  .cr-select { min-height: 72px; min-width: 176px; }',
+      '  .cr-reel__poster { width: 104px; height: 156px; }',
       '  .cr-hist__poster { width: 64px; height: 96px; }',
       '}',
-      '/* --- Уменьшенная анимация --- */',
+      '/* ====== Уменьшенная анимация ====== */',
       '@media (prefers-reduced-motion: reduce) {',
-      '  .cr-screen, .cr-screen * { transition: none !important; animation: none !important; }',
+      '  .cr-screen, .cr-screen *, .cr-screen *:before, .cr-screen *:after { transition: none !important; animation: none !important; }',
       '}'
     ].join('\n');
     var style = document.createElement('style');
@@ -575,6 +614,63 @@
     for (var j = 0; j < jobs.length; j++) makeJob(jobs[j]);
   }
 
+  // --- Фоновая догрузка пула: больше страниц, тренды и жанровые подборки ---
+  var GROW = { started: false, listeners: [] };
+
+  function growJobs() {
+    var jobs = [], i, p;
+    function range(url, from, to, type) { for (p = from; p <= to; p++) jobs.push({ url: url, page: p, type: type }); }
+    range('trending/all/week', 1, 3, null);
+    range('movie/now_playing', 1, 2, 'movie');
+    range('movie/popular', 3, 10, 'movie');
+    range('movie/top_rated', 3, 15, 'movie');
+    range('tv/popular', 3, 8, 'tv');
+    range('tv/top_rated', 3, 10, 'tv');
+    for (i = 0; i < GENRES.length; i++) {
+      range('discover/movie?with_genres=' + GENRES[i].id + '&sort_by=vote_count.desc', 1, 2, 'movie');
+    }
+    return jobs;
+  }
+
+  function growNotify() {
+    for (var i = 0; i < GROW.listeners.length; i++) { try { GROW.listeners[i](POOL.list); } catch (e) { /* слушатель упал */ } }
+  }
+
+  function growPool() {
+    if (GROW.started || !POOL.loaded) return;
+    GROW.started = true;
+    var queue = growJobs(), active = 0, fails = 0, LIMIT = 3, notifyTimer = null;
+    function scheduleNotify() {
+      if (notifyTimer) return;
+      notifyTimer = setTimeout(function () { notifyTimer = null; growNotify(); }, 400);
+    }
+    function next() {
+      if (fails >= 6) queue = []; // источник не отвечает — не мучаем сеть
+      while (active < LIMIT && queue.length) run(queue.shift());
+      if (!active && !queue.length) scheduleNotify();
+    }
+    function run(job) {
+      var done = false, t = null;
+      active++;
+      function settle(ok) {
+        if (done) return;
+        done = true; clearTimeout(t); active--;
+        fails = ok ? 0 : fails + 1;
+        next();
+      }
+      t = setTimeout(function () { settle(false); }, POOL_TIMEOUT);
+      var started = requestList(job.url, job.page, function (data) {
+        if (done) return;
+        var arr = data && data.results ? data.results : (isArray(data) ? data : []);
+        poolAdd(arr, job.type || undefined);
+        scheduleNotify();
+        settle(arr.length > 0);
+      }, function () { settle(false); });
+      if (!started) settle(false);
+    }
+    next();
+  }
+
   // --- Действия с карточкой ---
   function openCard(card) {
     var A = L('Activity'), P = L('Player');
@@ -608,25 +704,28 @@
   // ===== 4. Шаблоны =====
   var TPL = {
     cr_screen: '<div class="cr-screen"><div class="cr-wrap">' +
-      '<div class="cr-head"><div class="cr-head__text"><div class="cr-title">{title}</div><div class="cr-sub cr-pool">{status}</div></div>' +
-      '<div class="cr-btn cr-btn--ghost selector" data-act="history">{history}</div></div>' +
+      '<div class="cr-marquee"><div class="cr-marquee__inner"><div class="cr-head__text"><div class="cr-kicker">{kicker}</div>' +
+      '<div class="cr-title">{title}</div><div class="cr-sub cr-pool">{status}</div></div>' +
+      '<div class="cr-btn cr-btn--ghost selector" data-act="history">{history}</div></div></div>' +
       '<div class="cr-label">{presetsLabel}</div><div class="cr-row">{presets}</div>' +
       '<div class="cr-label">{genresLabel}</div><div class="cr-row">{genres}</div>' +
       '<div class="cr-label">{filtersLabel}</div><div class="cr-row">{selects}</div>' +
-      '<div class="cr-actions"><div class="cr-btn selector" data-act="spin">{spin}</div>' +
+      '<div class="cr-actions"><div class="cr-btn cr-btn--spin selector" data-act="spin">{spin}</div>' +
       '<div class="cr-btn cr-btn--ghost selector" data-act="reset">{reset}</div></div>' +
       '<div class="cr-stage"></div></div></div>',
     cr_chip: '<div class="cr-chip selector{cls}" data-act="{act}" data-val="{val}">{text}</div>',
     cr_select: '<div class="cr-select selector" data-act="select" data-val="{key}"><span class="cr-select__k">{label}</span><span class="cr-select__v">{value}</span></div>',
     cr_reel: '<div class="cr-reel"><div class="cr-reel__poster"></div><div class="cr-reel__body"><div class="cr-reel__title"></div><div class="cr-reel__meta"></div></div></div>',
-    cr_result: '<div class="cr-card cr-appear"><div class="cr-poster">{poster}</div><div class="cr-info">' +
+    cr_result: '<div class="cr-ticket cr-appear"><div class="cr-card"><div class="cr-poster">{poster}</div><div class="cr-info">' +
       '<div class="cr-card__title">{title}</div><div class="cr-meta">{meta}</div><div class="cr-tags">{tags}</div>' +
-      '<div class="cr-desc">{overview}</div>{note}<div class="cr-actions">{buttons}</div></div></div>',
-    cr_hint: '<div class="cr-hint cr-appear"><div class="cr-hint__title{cls}">{title}</div><div class="cr-hint__text">{text}</div>' +
+      '<div class="cr-desc">{overview}</div>{note}<div class="cr-actions">{buttons}</div></div></div>' +
+      '<div class="cr-stub">{stub}<div class="cr-barcode"></div></div></div>',
+    cr_stub_cell: '<div class="cr-stub__cell"><span class="cr-stub__k">{k}</span><span class="cr-stub__v">{v}</span></div>',
+    cr_hint: '<div class="cr-hint cr-appear"><div class="cr-kicker">{kicker}</div><div class="cr-hint__title{cls}">{title}</div><div class="cr-hint__text">{text}</div>' +
       '<div class="cr-actions"><div class="cr-btn selector" data-act="{act}">{button}</div></div></div>',
-    cr_history: '<div class="cr-screen"><div class="cr-wrap"><div class="cr-head"><div class="cr-head__text">' +
-      '<div class="cr-title">{title}</div><div class="cr-sub cr-count">{count}</div></div>' +
-      '<div class="cr-btn cr-btn--ghost selector" data-act="clear">{clear}</div></div><div class="cr-hist">{items}</div></div></div>',
+    cr_history: '<div class="cr-screen"><div class="cr-wrap"><div class="cr-marquee"><div class="cr-marquee__inner"><div class="cr-head__text">' +
+      '<div class="cr-kicker">{kicker}</div><div class="cr-title">{title}</div><div class="cr-sub cr-count">{count}</div></div>' +
+      '<div class="cr-btn cr-btn--ghost selector" data-act="clear">{clear}</div></div></div><div class="cr-hist">{items}</div></div></div>',
     cr_history_item: '<div class="cr-hist__item selector" data-act="open" data-val="{index}"><div class="cr-hist__poster"{style}></div>' +
       '<div class="cr-hist__body"><div class="cr-hist__title">{title}</div><div class="cr-hist__meta">{meta}</div></div>' +
       '<div class="cr-hist__date">{date}</div></div>'
@@ -657,6 +756,20 @@
     if (A) A.push({ url: '', title: LANG.historyTitle, component: COMPONENT_HISTORY, page: 1 });
   }
 
+  // Корешок билета: зал/ряд/место стабильны для фильма, сеанс — ближайшие полчаса
+  function ticketStub(item) {
+    var h = 0, key = String(item.key), i;
+    for (i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 1000003;
+    var d = new Date();
+    d.setMinutes(d.getMinutes() < 30 ? 30 : 60, 0, 0);
+    var hh = d.getHours(), mm = d.getMinutes();
+    var cells = [[LANG.hall, 1 + h % 7], [LANG.row, 1 + Math.floor(h / 7) % 14], [LANG.seat, 1 + Math.floor(h / 98) % 22],
+      [LANG.session, (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm]];
+    var out = '';
+    for (i = 0; i < cells.length; i++) out += tpl('cr_stub_cell', { k: cells[i][0], v: cells[i][1] });
+    return out;
+  }
+
   function renderResult(item, surprise) {
     var tags = genreNames(item), tagsHtml = '', i;
     for (i = 0; i < tags.length; i++) tagsHtml += '<span class="cr-tag">' + escapeHtml(tags[i]) + '</span>';
@@ -675,7 +788,8 @@
       tags: tagsHtml,
       overview: escapeHtml(item.overview),
       note: surprise ? '<div class="cr-note">' + LANG.surpriseHint + '</div>' : '',
-      buttons: buttons
+      buttons: buttons,
+      stub: ticketStub(item)
     });
   }
 
@@ -777,11 +891,12 @@
       for (i = 0; i < GENRES.length; i++) genres += tpl('cr_chip', { cls: '', act: 'genre', val: GENRES[i].id, text: escapeHtml(GENRES[i].name) });
       for (i = 0; i < keys.length; i++) selects += tpl('cr_select', { key: keys[i], label: LANG[keys[i]], value: '' });
       return tpl('cr_screen', {
-        title: LANG.title, status: LANG.poolLoading, history: LANG.history, presetsLabel: LANG.presets, presets: presets,
+        kicker: LANG.kicker, title: LANG.title, status: LANG.poolLoading, history: LANG.history, presetsLabel: LANG.presets, presets: presets,
         genresLabel: LANG.genres, genres: genres, filtersLabel: LANG.filters, selects: selects, spin: LANG.spin, reset: LANG.reset
       });
     }
 
+    function onGrow() { if (!destroyed) updateStatus(); }
     function updateStatus() {
       if (!ctx.body) return;
       var total = POOL.list.length, match = 0;
@@ -890,7 +1005,7 @@
         if (!filtered.length) {
           setSpinning(false);
           noty(LANG.empty);
-          setStage(tpl('cr_hint', { cls: ' cr-hint__title--warn', title: LANG.emptyTitle, text: LANG.emptyText, act: 'reset', button: LANG.resetFilters }), true);
+          setStage(tpl('cr_hint', { kicker: LANG.kickerEmpty, cls: '', title: LANG.emptyTitle, text: LANG.emptyText, act: 'reset', button: LANG.resetFilters }), true);
           return;
         }
         for (i = 0; i < filtered.length; i++) if (!ex[filtered[i].key]) fresh.push(filtered[i]);
@@ -903,6 +1018,10 @@
           addHistory(winner);
           current = winner;
           setStage(renderResult(winner, filters.surprise), true);
+          var mq = ctx.body.find('.cr-marquee');
+          mq.removeClass('cr-lit');
+          if (mq[0]) mq[0].getBoundingClientRect();
+          mq.addClass('cr-lit');
         }, onTick);
       });
     }
@@ -926,7 +1045,8 @@
       createShell(ctx);
       bindAll(ctx, ctx.body, onAction);
       updateFilterUI();
-      loadPool(function () { if (!destroyed) updateStatus(); });
+      loadPool(function () { if (!destroyed) updateStatus(); growPool(); });
+      GROW.listeners.push(onGrow);
       if (self.activity && self.activity.loader) self.activity.loader(false);
       return self.render();
     };
@@ -936,6 +1056,7 @@
     this.render = function () { return ctx.renderEl; };
     this.destroy = function () {
       destroyed = true;
+      for (var gi = GROW.listeners.length - 1; gi >= 0; gi--) if (GROW.listeners[gi] === onGrow) GROW.listeners.splice(gi, 1);
       ctx.active = false;
       if (cancelSpin) cancelSpin();
       if (ctx.onResize) window.removeEventListener('resize', ctx.onResize);
@@ -950,7 +1071,7 @@
     var list = [];
 
     function itemsHtml() {
-      if (!list.length) return tpl('cr_hint', { cls: '', title: LANG.historyEmpty, text: LANG.historyEmptyText, act: 'roulette', button: LANG.toRoulette });
+      if (!list.length) return tpl('cr_hint', { kicker: LANG.kickerHistoryEmpty, cls: '', title: LANG.historyEmpty, text: LANG.historyEmptyText, act: 'roulette', button: LANG.toRoulette });
       var out = '';
       for (var i = 0; i < list.length; i++) {
         var h = list[i];
@@ -980,7 +1101,7 @@
     }
 
     this.create = function () {
-      ctx.body = $(tpl('cr_history', { title: LANG.historyTitle, count: '', clear: LANG.clear, items: '' }));
+      ctx.body = $(tpl('cr_history', { kicker: LANG.kickerHistory, title: LANG.historyTitle, count: '', clear: LANG.clear, items: '' }));
       createShell(ctx);
       fill();
       if (self.activity && self.activity.loader) self.activity.loader(false);
