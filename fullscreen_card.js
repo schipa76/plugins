@@ -270,10 +270,10 @@
             '.torrent-item__grabs span{color:#a9d0ff !important;background-color:rgba(60,130,246,.22) !important;border:1px solid #4a8df0 !important;}' +
             '.torrent-item__bitrate span,.torrent-item__size{color:#a5f3f5 !important;background-color:rgba(40,200,210,.2) !important;border:1px solid #3ccfd6 !important;}' +
 
-            // иконки пунктов "Страница фильма" и "Трейлеры" в настройках: при наведении тёмные, как у родных
-            '.settings-folder.focus .fsc-set-ico,.settings-folder.focus .fsc-set-ico *{color:#000 !important;}' +
-            '.settings-folder.focus .fsc-set-ico [stroke]{stroke:#000 !important;}' +
-            '.settings-folder.focus .fsc-set-ico [fill]:not([fill="none"]){fill:#000 !important;}' +
+            // Иконки пунктов настроек (в том числе плагинов) рисуются цветом currentColor: на выбранном пункте он
+            // тёмный, а Lampa потом сама инвертирует иконку, и она становится светлой на светлой плашке.
+            // Фиксируем белый цвет, тогда инверсия Lampa даёт тёмную иконку, как у родных пунктов.
+            '.settings-folder__icon,.settings-folder__icon svg{color:#fff !important;}' +
 
             // у карточек в списках своя плашка рейтинга: родную плашку Lampa под ней не показываем
             '.fsc-has-rate .card__vote{display:none !important;}' +
@@ -3402,6 +3402,19 @@
             return null;
         }
 
+        // иконка без видимых фигур (картинка, <use>, маска): берём цвет самого блока иконки
+        function iconColorFallback(ico) {
+            if (ico.querySelector('img')) return { r: 255, g: 255, b: 255, a: 1 };
+
+            var cs = window.getComputedStyle(ico);
+            var mask = cs.webkitMaskImage || cs.maskImage || '';
+            var bg = parseColor(cs.backgroundColor);
+
+            if (mask && mask !== 'none' && bg && bg.a > 0.3) return bg;
+
+            return parseColor(cs.color);
+        }
+
         // уже есть инверсия от темы: на самой иконке, на картинке внутри неё или выше, до пункта меню
         function themeInverted(ico, item) {
             var inner = ico.querySelector('svg, img');
@@ -3451,8 +3464,14 @@
                 ico.style.setProperty('transition', 'none', 'important');
 
                 var c = iconColor(ico);
+                var viaFallback = false;
 
-                if (!c) return diag('цвет иконки не определён (' + describeEl(ico) + ')');
+                if (!c) {
+                    c = iconColorFallback(ico);
+                    viaFallback = true;
+                }
+
+                if (!c) return diag('цвет иконки не определён: ' + String(ico.innerHTML || '').slice(0, 90));
 
                 var L = lum(c);
                 var inv = themeInverted(ico, item);
@@ -3466,7 +3485,7 @@
                     ico.style.setProperty('filter', 'invert(1)', 'important');
                 }
 
-                diag(describeEl(item) + ': иконка ' + L.toFixed(2) + ', текст ' + (T === null ? '?' : T.toFixed(2)) +
+                diag(describeEl(item) + (viaFallback ? ' (иконка без фигур)' : '') + ': иконка ' + L.toFixed(2) + ', текст ' + (T === null ? '?' : T.toFixed(2)) +
                     ', тема ' + (inv ? 'инвертирует' : 'нет') + ' -> ' + (need ? 'инвертирую' : 'не трогаю'));
             } catch (e) {}
         }
