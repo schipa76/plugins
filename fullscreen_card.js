@@ -258,33 +258,17 @@
                     'outline-color:transparent !important;animation:none !important;transition:none !important;}';
             }).join('') +
 
-            // номер серии (плашка в левом верхнем углу) не должен налезать на рамку:
-            // сдвигаем его внутрь рамки (рамка .3em от размера плашки, у номера шрифт крупнее, поэтому .3em с запасом)
-            'body.fsc-ring .torrent-serial__episode{top:.3em !important;left:.3em !important;}' +
 
-            // инверсия выбранного пультом пункта во всех меню: белый фон, чёрный текст и значок.
-            // Только фокус (.focus), без нажатия и без наведения мышью
-            ['.menu__item.focus', '.menu__item.traverse', '.settings-folder.focus', '.settings-param.focus',
-                '.selectbox-item.focus', '.head__action.focus', '.modal__button.focus', '.navigation-bar__item.focus'
-            ].map(function (m) {
-                return m + '{background-color:#fff !important;color:#000 !important;}' +
-                    m + ' [stroke]:not([stroke="none"]){stroke:#000 !important;}' +
-                    m + ' path[fill]:not([fill="none"]),' + m + ' rect[fill]:not([fill="none"]),' +
-                    m + ' circle[fill]:not([fill="none"]),' + m + ' polygon[fill]:not([fill="none"]){fill:#000 !important;}';
-            }).join('') +
-            '.menu__item.focus .menu__ico>img,.menu__item.traverse .menu__ico>img{filter:invert(1) !important;}' +
+            // номер серии лежит внутри рамки, а не торчит из угла плашки
+            '.fsc-serial-badge{top:.5em !important;left:.5em !important;right:auto !important;bottom:auto !important;margin:0 !important;transform:none !important;}' +
 
-            // цветные плашки в списке торрентов: раздают, качают, битрейт, размер
-            'body.fsc-torrent .torrent-item__seeds span,' +
-            'body.fsc-torrent .torrent-item__grabs span,' +
-            'body.fsc-torrent .torrent-item__bitrate span,' +
-            'body.fsc-torrent .torrent-item__size{' +
-                'display:inline-block;padding:.05em .5em;border-radius:.35em;border:.12em solid;font-weight:600;line-height:1.35;' +
-            '}' +
-            'body.fsc-torrent .torrent-item__seeds span{color:#ffb74d !important;background:rgba(255,167,38,.2);border-color:#ffa726;}' +
-            'body.fsc-torrent .torrent-item__grabs span{color:#8ab4ff !important;background:rgba(100,140,255,.2);border-color:#6c8cff;}' +
-            'body.fsc-torrent .torrent-item__bitrate span{color:#5eead4 !important;background:rgba(38,198,176,.2);border-color:#26c6b0;}' +
-            'body.fsc-torrent .torrent-item__size{color:#5eead4 !important;background:rgba(38,198,176,.2);border-color:#26c6b0;}' +
+            // иконка пункта меню, которая при наведении сливается с фоном: инвертируется (см. UiFix)
+            '.fsc-ico-inv{filter:invert(1) !important;transition:none !important;}' +
+
+            // цвета у торрентов: раздают, качают, битрейт и размер
+            '.torrent-item__seeds span{color:#ffd9a3 !important;background-color:rgba(255,160,50,.2) !important;border:1px solid #e0a050 !important;}' +
+            '.torrent-item__grabs span{color:#a9d0ff !important;background-color:rgba(60,130,246,.22) !important;border:1px solid #4a8df0 !important;}' +
+            '.torrent-item__bitrate span,.torrent-item__size{color:#a5f3f5 !important;background-color:rgba(40,200,210,.2) !important;border:1px solid #3ccfd6 !important;}' +
 
             // иконки пунктов "Страница фильма" и "Трейлеры" в настройках: при наведении тёмные, как у родных
             '.settings-folder.focus .fsc-set-ico,.settings-folder.focus .fsc-set-ico *{color:#000 !important;}' +
@@ -599,20 +583,6 @@
     // по размеру: изображение или фон-картинка шириной от трети экрана и высотой от половины.
     var hiddenBackdrops = [];
 
-    // Служебные окна Lampa (левое меню, настройки, списки выбора, модальные окна, шапка) в поиске фона
-    // не участвуют: они тоже крупные, и правки фона убирали у них родные цвета выбранного пункта.
-    var UI_CHROME = '.menu, .wrap__left, .settings, .selectbox, .modal, .head, .navigation-bar';
-    var UI_ITEMS = '.menu__item, .settings-folder, .settings-param, .selectbox-item';
-
-    function isUiChrome(el) {
-        try {
-            if (el.closest && el.closest(UI_CHROME)) return true;
-            if (el.querySelector && el.querySelector(UI_ITEMS)) return true;
-        } catch (e) {}
-
-        return false;
-    }
-
     function restoreBackdrop() {
         try {
             $(hiddenBackdrops).removeClass('fsc-bg-hidden fsc-bg-clear fsc-bg-now');
@@ -641,7 +611,6 @@
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
-                if (isUiChrome(el)) return;
 
                 if (el.tagName === 'IMG') {
                     $(el).addClass('fsc-bg-hidden');
@@ -779,7 +748,10 @@
 
                 var r = el.getBoundingClientRect();
                 if (r.width < w * 0.35 || r.height < h * 0.5) return;
-                if (isUiChrome(el)) return;
+
+                // меню, настройки и окна не трогаем: иначе у них пропадает инверсия иконок при наведении
+                if (el.closest && el.closest('.menu, .settings, .selectbox, .modal, .head, .navigation-bar')) return;
+                if (el.querySelector && el.querySelector('.menu__item, .settings-folder')) return;
 
                 var cs = window.getComputedStyle(el);
                 var bi = cs.backgroundImage || '';
@@ -3343,6 +3315,159 @@
     })();
 
     // =====================================================================
+    //  Мелкие правки интерфейса: номер серии внутри рамки, инверсия иконок меню
+    // =====================================================================
+
+    var UiFix = (function () {
+        var started = false;
+        var lastMenu = null;
+        var menuTimers = [];
+        var MENU_SEL = '.menu__item.focus, .settings-folder.focus';
+        var SHAPES = 'path,rect,circle,polygon,line,polyline,ellipse';
+
+        // ---------- номер серии ----------
+
+        function fixSerials() {
+            var list = document.querySelectorAll('.torrent-serial:not([data-fsc-nb="1"])');
+
+            for (var i = 0; i < list.length; i++) {
+                var it = list[i];
+                var tries = parseInt(it.getAttribute('data-fsc-nbt') || '0', 10) + 1;
+                var found = false;
+                var kids = it.querySelectorAll('*');
+
+                for (var j = 0; j < kids.length; j++) {
+                    var k = kids[j];
+                    if (k.children.length) continue;
+
+                    var t = String(k.textContent || '').replace(/\s+/g, '');
+                    if (!/^\d{1,4}$/.test(t)) continue;
+                    if (window.getComputedStyle(k).position !== 'absolute') continue;
+
+                    k.classList.add('fsc-serial-badge');
+                    found = true;
+                    break;
+                }
+
+                it.setAttribute('data-fsc-nbt', String(tries));
+                if (found || tries > 12) it.setAttribute('data-fsc-nb', '1');
+            }
+        }
+
+        // ---------- инверсия иконок меню ----------
+
+        function parseColor(c) {
+            var m = /rgba?\(([^)]+)\)/.exec(c || '');
+            if (!m) return null;
+
+            var p = m[1].split(',').map(function (x) { return parseFloat(x); });
+            return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+        }
+
+        function lum(c) {
+            return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
+        }
+
+        function bgLum(el) {
+            var cur = el;
+
+            while (cur && cur.nodeType === 1) {
+                var c = parseColor(window.getComputedStyle(cur).backgroundColor);
+                if (c && c.a >= 0.5) return lum(c);
+                cur = cur.parentNode;
+            }
+
+            return 0;
+        }
+
+        function iconColor(ico) {
+            var shapes = ico.querySelectorAll(SHAPES);
+
+            for (var i = 0; i < shapes.length; i++) {
+                var cs = window.getComputedStyle(shapes[i]);
+                var f = cs.fill !== 'none' ? parseColor(cs.fill) : null;
+                if (f && f.a > 0.3) return f;
+
+                var st = cs.stroke !== 'none' ? parseColor(cs.stroke) : null;
+                if (st && st.a > 0.3) return st;
+            }
+
+            return null;
+        }
+
+        // уже есть инверсия от темы (на самой иконке или выше, до пункта меню)
+        function themeInverted(ico, item) {
+            var cur = ico;
+
+            while (cur && cur.nodeType === 1) {
+                var f = window.getComputedStyle(cur).filter || '';
+                if (f.indexOf('invert') !== -1) return true;
+                if (cur === item) break;
+                cur = cur.parentNode;
+            }
+
+            return false;
+        }
+
+        // Иконка и фон выбранного пункта одного тона - иконку инвертируем.
+        // Если тема уже инвертирует сама, ничего не добавляем (иначе получится двойная инверсия).
+        function evalMenu(item) {
+            try {
+                var ico = item.querySelector('.menu__ico, .settings-folder__icon');
+                if (!ico) return;
+
+                ico.classList.remove('fsc-ico-inv');
+
+                var c = iconColor(ico);
+                if (!c) return;
+
+                var L = lum(c);
+                if (themeInverted(ico, item)) L = 1 - L;
+
+                if (Math.abs(L - bgLum(item)) < 0.35) ico.classList.add('fsc-ico-inv');
+            } catch (e) {}
+        }
+
+        function clearMenu(item) {
+            try {
+                var ico = item && item.querySelector('.menu__ico, .settings-folder__icon');
+                if (ico) ico.classList.remove('fsc-ico-inv');
+            } catch (e) {}
+        }
+
+        function tickMenu() {
+            var cur = document.querySelector(MENU_SEL);
+            if (cur === lastMenu) return;
+
+            menuTimers.forEach(clearTimeout);
+            menuTimers = [];
+
+            clearMenu(lastMenu);
+            lastMenu = cur;
+            if (!cur) return;
+
+            // фон пункта может появляться с анимацией, поэтому проверяем несколько раз
+            [0, 120, 350, 700].forEach(function (ms) {
+                menuTimers.push(setTimeout(function () {
+                    if (lastMenu === cur) evalMenu(cur);
+                }, ms));
+            });
+        }
+
+        function start() {
+            if (started) return;
+            started = true;
+
+            setInterval(function () {
+                fixSerials();
+                tickMenu();
+            }, 120);
+        }
+
+        return { start: start };
+    })();
+
+    // =====================================================================
     //  ЧАСТЬ 9. Убираем вкладку Shots из настроек Lampa
     // =====================================================================
 
@@ -3416,6 +3541,7 @@
 
         try {
             Ring.start();
+            UiFix.start();
         } catch (err) {
             console.log('fullscreen_card: ring error', err);
         }
