@@ -260,7 +260,7 @@
 
 
             // номер серии лежит внутри рамки, а не торчит из угла плашки
-            '.fsc-serial-badge{top:.5em !important;left:.5em !important;right:auto !important;bottom:auto !important;margin:0 !important;transform:none !important;}' +
+            '.fsc-serial-badge{top:.3em !important;left:.3em !important;right:auto !important;bottom:auto !important;margin:0 !important;transform:none !important;}' +
 
             // иконка пункта меню, которая при наведении сливается с фоном: инвертируется (см. UiFix)
             '.fsc-ico-inv{filter:invert(1) !important;transition:none !important;}' +
@@ -3322,7 +3322,14 @@
         var started = false;
         var lastMenu = null;
         var menuTimers = [];
-        var MENU_SEL = '.menu__item.focus, .settings-folder.focus';
+        var MENU_SEL = '.menu__item.focus, .settings-folder.focus, .menu .selector.focus, .settings .selector.focus';
+        var ICO_SEL = '.menu__ico, .settings-folder__icon, [class*="__ico"]';
+        var NAME_SEL = '.settings-folder__name, .menu__text, [class*="__name"], [class*="__text"]';
+
+        // Подсказка на экране: что плагин видит у выбранного пункта меню (чтобы разобраться, если иконка не инвертируется).
+        // Чтобы отключить, поставьте false.
+        var MENU_DIAG = true;
+        var diagAt = 0;
         var SHAPES = 'path,rect,circle,polygon,line,polyline,ellipse';
 
         // ---------- номер серии ----------
@@ -3395,8 +3402,12 @@
             return null;
         }
 
-        // уже есть инверсия от темы (на самой иконке или выше, до пункта меню)
+        // уже есть инверсия от темы: на самой иконке, на картинке внутри неё или выше, до пункта меню
         function themeInverted(ico, item) {
+            var inner = ico.querySelector('svg, img');
+
+            if (inner && (window.getComputedStyle(inner).filter || '').indexOf('invert') !== -1) return true;
+
             var cur = ico;
 
             while (cur && cur.nodeType === 1) {
@@ -3409,29 +3420,65 @@
             return false;
         }
 
-        // Иконка и фон выбранного пункта одного тона - иконку инвертируем.
-        // Если тема уже инвертирует сама, ничего не добавляем (иначе получится двойная инверсия).
+        // яркость цвета текста пункта: у выбранного пункта тема красит текст в тёмный, иконка должна быть такого же тона
+        function textLum(item) {
+            var t = item.querySelector(NAME_SEL) || item;
+            var c = parseColor(window.getComputedStyle(t).color);
+
+            return c ? lum(c) : null;
+        }
+
+        function diag(msg) {
+            if (!MENU_DIAG || Date.now() - diagAt < 6000) return;
+            diagAt = Date.now();
+
+            try { Lampa.Noty.show('Иконка меню: ' + msg); } catch (e) {}
+        }
+
+        // Иконка по тону не совпадает с текстом выбранного пункта (светлая иконка на светлой плашке) - инвертируем.
+        // Если тема уже инвертирует сама, это учитывается, двойной инверсии не будет.
         function evalMenu(item) {
             try {
-                var ico = item.querySelector('.menu__ico, .settings-folder__icon');
-                if (!ico) return;
+                var ico = item.querySelector(ICO_SEL);
+
+                if (!ico) {
+                    if (item.matches && item.matches('.menu__item, .settings-folder')) diag('иконка не найдена (' + describeEl(item) + ')');
+                    return;
+                }
 
                 ico.classList.remove('fsc-ico-inv');
+                ico.style.removeProperty('filter');
+                ico.style.setProperty('transition', 'none', 'important');
 
                 var c = iconColor(ico);
-                if (!c) return;
+
+                if (!c) return diag('цвет иконки не определён (' + describeEl(ico) + ')');
 
                 var L = lum(c);
-                if (themeInverted(ico, item)) L = 1 - L;
+                var inv = themeInverted(ico, item);
+                if (inv) L = 1 - L;
 
-                if (Math.abs(L - bgLum(item)) < 0.35) ico.classList.add('fsc-ico-inv');
+                var T = textLum(item);
+                var need = T !== null ? Math.abs(L - T) > 0.5 : Math.abs(L - bgLum(item)) < 0.35;
+
+                if (need) {
+                    ico.classList.add('fsc-ico-inv');
+                    ico.style.setProperty('filter', 'invert(1)', 'important');
+                }
+
+                diag(describeEl(item) + ': иконка ' + L.toFixed(2) + ', текст ' + (T === null ? '?' : T.toFixed(2)) +
+                    ', тема ' + (inv ? 'инвертирует' : 'нет') + ' -> ' + (need ? 'инвертирую' : 'не трогаю'));
             } catch (e) {}
         }
 
         function clearMenu(item) {
             try {
-                var ico = item && item.querySelector('.menu__ico, .settings-folder__icon');
-                if (ico) ico.classList.remove('fsc-ico-inv');
+                var ico = item && item.querySelector(ICO_SEL);
+
+                if (ico) {
+                    ico.classList.remove('fsc-ico-inv');
+                    ico.style.removeProperty('filter');
+                }
             } catch (e) {}
         }
 
