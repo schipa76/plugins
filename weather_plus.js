@@ -1117,9 +1117,8 @@
             '.wp-head.focus{background:transparent!important;color:#fff!important;box-shadow:0 0 0 .11em #fff!important;text-shadow:none}',
             '.wp-head svg{width:1.25em;height:1.25em;margin-right:.25em;flex-shrink:0}',
             '.wp-head span{font-size:1em;font-weight:inherit}',
-            '.settings-folder[data-component="weather_plus"] .settings-folder__icon svg,.settings-folder[data-component="weather_plus"] .settings-folder__icon svg *{fill:#fff!important;color:#fff!important}',
-            '.settings-folder.focus[data-component="weather_plus"] .settings-folder__icon svg,.settings-folder.focus[data-component="weather_plus"] .settings-folder__icon svg *{fill:#000!important;color:#000!important}',
-            '.menu__item.focus[data-action="weather_plus"] .menu__ico svg,.menu__item.focus[data-action="weather_plus"] .menu__ico svg *{fill:#000!important;color:#000!important}'
+            /* иконка в настройках всегда белая: при наведении Lampa сама инвертирует её в чёрную, как у остальных пунктов */
+            '.settings-folder[data-component="weather_plus"] .settings-folder__icon svg,.settings-folder[data-component="weather_plus"] .settings-folder__icon svg *{fill:#fff!important;color:#fff!important}'
         ].join('\n');
         var st = document.createElement('style');
         st.id = 'weather-plus-style';
@@ -1595,45 +1594,9 @@
     }
 
 
-    // Инверсия иконки пункта «Погода» при наведении (чёрная на белой плашке)
-    var invList = [];
-    function invReset() {
-        invList.forEach(function (n) {
-            try { n.style.removeProperty('fill'); n.style.removeProperty('stroke'); n.style.removeProperty('color'); } catch (e) { }
-        });
-        invList = [];
-    }
-    function invApply(item) {
-        [].forEach.call(item.querySelectorAll('svg, svg *'), function (n) {
-            try {
-                n.style.setProperty('fill', n.getAttribute && n.getAttribute('fill') === 'none' ? 'none' : '#000', 'important');
-                var st = n.getAttribute && n.getAttribute('stroke');
-                if (st && st !== 'none') n.style.setProperty('stroke', '#000', 'important');
-                n.style.setProperty('color', '#000', 'important');
-                invList.push(n);
-            } catch (e) { }
-        });
-    }
-    function isWeatherItem(item) {
-        if (!item) return false;
-        if (item.getAttribute('data-component') === 'weather_plus' || item.getAttribute('data-action') === 'weather_plus') return true;
-        if (!/settings-folder|menu__item/.test(item.className || '')) return false;
-        return /^Погода\+?$/.test((item.textContent || '').replace(/\s+/g, ' ').trim());
-    }
-    function bindInvert() {
-        try {
-            $(document).on('hover:focus', '.selector', function (e) {
-                invReset();
-                var item = e.currentTarget || e.target;
-                if (isWeatherItem(item) && item.querySelector('svg')) invApply(item);
-            });
-        } catch (e) { }
-    }
-
     function init() {
         Lampa.Component.add('weather_plus', WeatherPage);
         injectStyle();
-        bindInvert();
         $('.menu [data-action="weather_plus"]').remove();
         addSettings();
         setTimeout(function () { updateHead(false); }, 1500);
