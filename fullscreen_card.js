@@ -3332,7 +3332,7 @@
 
         // Подсказка на экране: что плагин видит у выбранного пункта меню (чтобы разобраться, если иконка не инвертируется).
         // Чтобы отключить, поставьте false.
-        var MENU_DIAG = true;
+        var MENU_DIAG = false;
         var diagAt = 0;
         var SHAPES = 'path,rect,circle,polygon,line,polyline,ellipse';
 

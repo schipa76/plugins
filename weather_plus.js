@@ -1113,8 +1113,8 @@
             '@keyframes wpflash{0%,92%,96%,100%{opacity:0}93%{opacity:.35}94%{opacity:.05}95%{opacity:.25}}',
 
             /* виджет в шапке */
-            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;padding:.04em .28em!important;border-radius:2em!important;white-space:nowrap;line-height:1}',
-            '.wp-head.focus{background:transparent!important;color:#fff!important;box-shadow:0 0 0 .11em #fff!important;text-shadow:none}',
+            '.wp-head{display:flex;align-items:center;width:auto!important;height:auto!important;padding:0 .22em!important;border-radius:2em!important;white-space:nowrap;line-height:1}',
+            '.wp-head.focus{background:transparent!important;color:#fff!important;box-shadow:0 0 0 .09em #fff!important;text-shadow:none}',
             '.wp-head svg{width:1.25em;height:1.25em;margin-right:.25em;flex-shrink:0}',
             '.wp-head span{font-size:1em;font-weight:inherit}',
             /* иконка в настройках всегда белая: при наведении Lampa сама инвертирует её в чёрную, как у остальных пунктов */
@@ -1423,6 +1423,19 @@
         }
         return acts.length ? acts[acts.length - 1] : null;
     }
+    // Высота виджета: внешний край рамки при наведении равен диаметру кружка профиля (линия рамки .09em)
+    function fitToProfile(el, profile) {
+        try {
+            var D = profile.getBoundingClientRect().height;
+            if (!D) return;
+
+            var fs = parseFloat(window.getComputedStyle(el).fontSize) || 16;
+            var ring = fs * 0.09;
+
+            el.style.setProperty('box-sizing', 'border-box', 'important');
+            el.style.setProperty('height', Math.max(10, D - 2 * ring).toFixed(1) + 'px', 'important');
+        } catch (e) { }
+    }
     function alignHead() {
         if (!headEl || !headEl[0].parentNode) return;
         var el = headEl[0];
@@ -1433,6 +1446,7 @@
             if (!visible(el)) return;
             var profile = findProfile(el);
             if (!profile) return;
+            fitToProfile(el, profile);
             var W = el.getBoundingClientRect().width;
             el.style.marginRight = (-W) + 'px';          // в раскладке виджет места не занимает
             var P = profile.getBoundingClientRect();
